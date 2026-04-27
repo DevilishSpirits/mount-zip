@@ -15,24 +15,19 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include <cassert>
-#include <iomanip>
-#include <iostream>
+#include <gtest/gtest.h>
 #include <string>
 
 #include "path.h"
 
+namespace {
+
 void checkConversion(const std::string_view fname,
                      const std::string_view expected) {
-  const std::string res = Path(fname).Normalized();
-  if (res != expected) {
-    std::cerr << "got " << std::quoted(res) << ", want "
-              << std::quoted(expected) << std::endl;
-  }
-  assert(res == expected);
+  EXPECT_EQ(Path(fname).Normalized(), expected);
 }
 
-int main() {
+TEST(FilenameValidator, Normalized) {
   checkConversion("normal.name", "/normal.name");
   checkConversion("path/to/normal.name", "/path/to/normal.name");
   checkConversion("", "/?");
@@ -66,6 +61,6 @@ int main() {
   checkConversion("///rootname", "/rootname");
   checkConversion("/path/name", "/path/name");
   checkConversion("///path///name", "/path/name");
-
-  return EXIT_SUCCESS;
 }
+
+}  // namespace

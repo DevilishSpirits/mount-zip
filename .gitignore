@@ -1,14 +1,6 @@
-syntax: glob
-
-# ignore generated files
-*.d
-*.o
-mount-zip
-lib/*.a
-
-# tests
-tests/whitebox/*.x
-
-# utils
-utils/dump-extrafld
-utils/create-content-size
+*~
+out
+tests/blackbox/data/big.zip
+tests/blackbox/data/collisions.zip
+tests/blackbox/data/deep.zip
+tests/blackbox/data/many_nodes.zip

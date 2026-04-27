@@ -16,56 +16,64 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 PKG_CONFIG ?= pkg-config
-PC_DEPS = libzip icu-uc icu-i18n
-CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(PC_DEPS))
-CXXFLAGS += -g -O2 -Wall -Wextra -Wno-sign-compare -Wno-missing-field-initializers -std=c++20
-CXXFLAGS += -D_FILE_OFFSET_BITS=64 
-LIBS := -L../../lib -lmountzip $(shell $(PKG_CONFIG) --libs $(PC_DEPS))
-VALGRIND=valgrind -q --leak-check=full --track-origins=yes --error-exitcode=33
-LIB=libmountzip.a
+PC_DEPS = libzip icu-uc icu-i18n gtest gtest_main
 
-SOURCES=$(wildcard *.cc)
-OBJECTS=$(SOURCES:.cc=.o)
-DEST=$(OBJECTS:.o=.x)
-TESTS=$(DEST:.x=.test)
-VALGRIND_TESTS=$(DEST:.x=.valgrind)
+PROJECT_CXXFLAGS = -std=c++20 -Wall -Wextra -Wno-sign-compare \
+                   -Wno-missing-field-initializers -g -D_FILE_OFFSET_BITS=64 \
+                   -D_TIME_BITS=64
 
-all: $(DEST)
+PROJECT_CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(PC_DEPS))
 
-$(DEST): %.x: %.o $(LIB)
-	$(CXX) $(LDFLAGS) $< $(LIBS) -o $@
+ifeq ($(DEBUG), 1)
+PROJECT_CXXFLAGS += -O0
+else
+PROJECT_CXXFLAGS += -O2
+endif
 
-$(OBJECTS): %.o: %.cc
-	$(CXX) -I../../lib -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
+PROJECT_LDFLAGS = -L$(OUT) -lmountzip $(shell $(PKG_CONFIG) --libs $(PC_DEPS))
 
--include $(SOURCES:.cc=.d)
+ifeq ($(ASAN), 1)
+PROJECT_CXXFLAGS += -fsanitize=address
+PROJECT_LDFLAGS += -fsanitize=address
+endif
+
+ifeq ($(UBSAN), 1)
+PROJECT_CXXFLAGS += -fsanitize=undefined
+PROJECT_LDFLAGS += -fsanitize=undefined
+endif
+
+VALGRIND = valgrind -q --leak-check=full --track-origins=yes --error-exitcode=33
+OUT ?= $(abspath ../../out)
+LIB = $(OUT)/libmountzip.a
+EXECUTABLE = $(OUT)/tests/whitebox/unit_tests
+
+SOURCES = $(wildcard *.cc)
+OBJECTS = $(addprefix $(OUT)/tests/whitebox/,$(SOURCES:.cc=.o))
+
+all: $(EXECUTABLE)
+
+$(EXECUTABLE): $(OBJECTS) $(LIB)
+	$(CXX) $(LDFLAGS) $(OBJECTS) $(PROJECT_LDFLAGS) -o $@
+
+$(OUT)/tests/whitebox/%.o: %.cc
+	@mkdir -p $(dir $@)
+	$(CXX) -I../../lib -c $(CPPFLAGS) $(PROJECT_CXXFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
+
+ifneq ($(filter clean,$(MAKECMDGOALS)),)
+else
+-include $(OBJECTS:.o=.d)
+endif
 
 $(LIB):
-	make -C ../../lib
+	$(MAKE) -C ../../lib ASAN=$(ASAN) UBSAN=$(UBSAN) DEBUG=$(DEBUG) OUT=$(OUT)
 
-lib-clean:
-	make -C ../../lib clean
+clean:
+	rm -rf $(OUT)/tests/whitebox
 
-clean: lib-clean test-clean
-	rm -f *.d *.o *.x
+test: $(EXECUTABLE)
+	$(EXECUTABLE)
 
-distclean: clean
-	make -C ../../lib clean
+valgrind: $(EXECUTABLE)
+	$(VALGRIND) $(EXECUTABLE)
 
-list:
-	@echo $(TESTS)
-
-test: $(TESTS)
-
-test-clean:
-	rm -f *.x.core vgcore.*
-
-$(TESTS): %.test: %.x
-	./$<
-
-$(VALGRIND_TESTS): %.valgrind: %.x
-	$(VALGRIND) ./$<
-
-valgrind: $(VALGRIND_TESTS)
-
-.PHONY: all clean distclean test test-clean valgrind lib-clean $(LIB)
+.PHONY: all clean test valgrind $(LIB)

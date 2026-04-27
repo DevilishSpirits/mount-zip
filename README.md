@@ -3,7 +3,7 @@ title: MOUNT-ZIP
 section: 1
 header: User Manual
 footer: mount-zip 1.13
-date: February 2026
+date: May 2026
 ---
 # NAME
 
@@ -151,7 +151,7 @@ $ umount mnt
 *   Supports Unix access modes and DOS file permissions
 *   Supports owner and group information (UID and GID)
 *   Supports relative and absolute paths
-*   Supports high precision timestamps
+*   Supports high-precision timestamps
 *   Works on 32-bit and 64-bit devices
 *   Supports ZIP64 extensions, even on 32-bit devices:
     *   Supports ZIP archives containing more than 65,535 files
@@ -358,17 +358,17 @@ mnt
 
 $ md5sum mnt/*
 7a542815e2c51837b3d8a8b2ebf36490  mnt/ClearText.txt
-md5sum: 'mnt/Encrypted AES-128.txt': Input/output error
-md5sum: 'mnt/Encrypted AES-192.txt': Input/output error
-md5sum: 'mnt/Encrypted AES-256.txt': Input/output error
-md5sum: 'mnt/Encrypted ZipCrypto.txt': Input/output error
+md5sum: 'mnt/Encrypted AES-128.txt': Input/Output error
+md5sum: 'mnt/Encrypted AES-192.txt': Input/Output error
+md5sum: 'mnt/Encrypted AES-256.txt': Input/Output error
+md5sum: 'mnt/Encrypted ZipCrypto.txt': Input/Output error
 
 $ cat mnt/*
 This is not encrypted.
-cat: 'mnt/Encrypted AES-128.txt': Input/output error
-cat: 'mnt/Encrypted AES-192.txt': Input/output error
-cat: 'mnt/Encrypted AES-256.txt': Input/output error
-cat: 'mnt/Encrypted ZipCrypto.txt': Input/output error
+cat: 'mnt/Encrypted AES-128.txt': Input/Output error
+cat: 'mnt/Encrypted AES-192.txt': Input/Output error
+cat: 'mnt/Encrypted AES-256.txt': Input/Output error
+cat: 'mnt/Encrypted ZipCrypto.txt': Input/Output error
 ```
 
 For security reasons, **mount-zip** doesn't allow the password to be specified
@@ -561,8 +561,8 @@ $ dd if='mnt/Big One.txt' of=/dev/null status=progress
 ```
 
 But **mount-zip** will start caching a file if it detects that this file is
-getting read in a non-sequential way (ie the reading application starts jumping
-to different positions of the file).
+getting read in a non-sequential way (i.e., the reading application starts
+jumping to different positions of the file).
 
 For example, `tail` jumps to the end of the file. The first time this happens,
 **mount-zip** decompresses the whole file and caches the decompressed data (in
@@ -598,7 +598,7 @@ Alternatively, the `-o memcache` option caches the decompressed data in memory.
 Be cautious with this option since it can cause **mount-zip** to use a lot of
 memory.
 
-You can preemtively cache data at mount time by using the `-o precache` option.
+You can preemptively cache data at mount time by using the `-o precache` option.
 The cost of decompression is incurred upfront, and this ensures that any
 subsequent access to the served data is fast.
 
@@ -636,7 +636,7 @@ $ du -sh mnt
 1.1G    mnt
 ```
 
-The full contents of this mounted ZIP, totalling 1.1 GB, can be extracted with
+The full contents of this mounted ZIP, totaling 1.1 GB, can be extracted with
 `cp -R` in 14 seconds:
 
 ```
@@ -692,29 +692,23 @@ is getting read by the `dd` program.
 
 # LOG MESSAGES
 
-**mount-zip** records log messages into `/var/log/user.log`. They can help
-troubleshooting issues, especially if you are facing I/O errors when reading
-files from the mounted ZIP.
+**mount-zip** records log messages to the system logger (**syslog**). These
+messages can help troubleshoot issues, such as I/O errors or archives that
+refuse to mount.
 
-To read **mount-zip**'s log messages:
-
-```
-$ grep mount-zip /var/log/user.log | less -S
-```
-
-To follow **mount-zip**'s log messages as they are being written:
+To read **mount-zip**'s log messages on most Linux systems:
 
 ```
-$ tail -F /var/log/user.log | grep mount-zip
+$ journalctl -t mount-zip
 ```
 
-Alternatively, you can run **mount-zip** in foreground mode with the `-f` option
-and read all the log messages on the terminal.
+Alternatively, you can run **mount-zip** in the foreground with the `-f`
+option to see log messages directly on your terminal.
 
-By default, **mount-zip** writes INFO and ERROR messages. You can decrease the
-logging level to just ERROR messages with the `-o quiet` option. Or you can
-increase the logging level to include DEBUG messages with the `-o verbose`
-option:
+By default, **mount-zip** writes **INFO** and **ERROR** messages. You can
+decrease the logging level to just **ERROR** messages with the `-o quiet`
+option, or increase it to include **DEBUG** messages with the `-o verbose`
+option.
 
 ```
 $ mount-zip -f -o verbose foobar.zip mnt
@@ -810,7 +804,7 @@ The original **fuse-zip** project was created in 2008 by
 
 The **mount-zip** project was then forked from **fuse-zip** in 2021 and further
 developed by [François Degros](https://github.com/fdegros). The ability to write
-and modify ZIP archives has been removed, but a number of optimisations and
+and modify ZIP archives has been removed, but a number of optimizations and
 features have been added:
 
 Feature                       | mount-zip | fuse-zip

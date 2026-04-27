@@ -16,7 +16,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 PKG_CONFIG ?= pkg-config
-LIBS = -L../lib -lmountzip $(shell $(PKG_CONFIG) libzip --libs)
+OUT ?= $(abspath ../out)
+LIB = $(OUT)/libmountzip.a
+LIBS = -L$(OUT) -lmountzip $(shell $(PKG_CONFIG) libzip --libs)
 CXXFLAGS += $(shell $(PKG_CONFIG) libzip --cflags)
 CXXFLAGS += -Wall -Wextra -Wno-nullability-extension -Wno-sign-compare -Wno-missing-field-initializers -pedantic -std=c++23
 CXXFLAGS += -D_FILE_OFFSET_BITS=64 
@@ -28,15 +30,33 @@ else
 CXXFLAGS += -O2 -DNDEBUG
 endif
 
-all: dump-extrafld create-content-size
+ifeq ($(ASAN), 1)
+CXXFLAGS += -fsanitize=address
+LDFLAGS += -fsanitize=address
+endif
 
-dump-extrafld: dump-extrafld.cpp $(LIB)
+ifeq ($(UBSAN), 1)
+CXXFLAGS += -fsanitize=undefined
+LDFLAGS += -fsanitize=undefined
+endif
+
+DUMP_EXTRAFLD = $(OUT)/utils/dump-extrafld
+CREATE_CONTENT_SIZE = $(OUT)/utils/create-content-size
+
+all: $(DUMP_EXTRAFLD) $(CREATE_CONTENT_SIZE)
+
+$(DUMP_EXTRAFLD): dump-extrafld.cpp $(LIB)
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $< -I.. $(LDFLAGS) $(LIBS) -o $@
 
-create-content-size: create-content-size.cpp
+$(CREATE_CONTENT_SIZE): create-content-size.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $< -I.. $(LDFLAGS) $(LIBS) -o $@
 
 clean:
-	rm -f dump-extrafld create-content-size
+	rm -rf $(OUT)/utils
 
-.PHONY: all clean
+$(LIB):
+	$(MAKE) -C ../lib ASAN=$(ASAN) UBSAN=$(UBSAN) DEBUG=$(DEBUG) OUT=$(OUT)
+
+.PHONY: all clean $(LIB)

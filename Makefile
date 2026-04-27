@@ -15,82 +15,114 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-DEST = mount-zip
-PREFIX = $(DESTDIR)/usr
-BINDIR = $(PREFIX)/bin
+PROJECT_NAME = mount-zip
+OUT = out
+ABS_OUT = $(abspath $(OUT))
+DEST = $(OUT)/$(PROJECT_NAME)
 PKG_CONFIG ?= pkg-config
 
+PREFIX ?= /usr/local
+BINDIR = $(PREFIX)/bin
+MANDIR = $(PREFIX)/share/man/man1
+
+PROJECT_CXXFLAGS = -std=c++20 -Wall -Wextra -Wno-nullability-extension \
+                   -Wno-sign-compare -Wno-missing-field-initializers \
+                   -pedantic -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64
+
 FUSE_MAJOR_VERSION ?= 3
+
 ifeq ($(FUSE_MAJOR_VERSION), 3)
 DEPS = fuse3
-CXXFLAGS += -DFUSE_USE_VERSION=30
+PROJECT_CXXFLAGS += -DFUSE_USE_VERSION=30
 else ifeq ($(FUSE_MAJOR_VERSION), 2)
 DEPS = fuse
-CXXFLAGS += -DFUSE_USE_VERSION=26
+PROJECT_CXXFLAGS += -DFUSE_USE_VERSION=26
 endif
 
 DEPS += libzip icu-uc icu-i18n
-LDFLAGS += -Llib -lmountzip
-LDFLAGS += $(shell $(PKG_CONFIG) --libs $(DEPS))
-CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(DEPS))
-CXXFLAGS += -Wall -Wextra -Wno-nullability-extension -Wno-sign-compare -Wno-missing-field-initializers -pedantic -std=c++20
-CXXFLAGS += -D_FILE_OFFSET_BITS=64 
+PROJECT_CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(DEPS))
+PROJECT_LDFLAGS = -L$(OUT) -lmountzip $(shell $(PKG_CONFIG) --libs $(DEPS))
 
 ifeq ($(DEBUG), 1)
-CXXFLAGS += -O0 -g
+PROJECT_CXXFLAGS += -O0 -g
 else
-CXXFLAGS += -O2 -DNDEBUG
+PROJECT_CXXFLAGS += -O2 -DNDEBUG
 endif
 
-LIB = lib/libmountzip.a
-SOURCES = $(DEST).cc
-OBJECTS = $(SOURCES:.cc=.o)
-MAN = $(DEST).1
-MANDIR = $(PREFIX)/share/man/man1
+ifeq ($(ASAN), 1)
+PROJECT_CXXFLAGS += -fsanitize=address
+PROJECT_LDFLAGS += -fsanitize=address
+endif
+
+ifeq ($(UBSAN), 1)
+PROJECT_CXXFLAGS += -fsanitize=undefined
+PROJECT_LDFLAGS += -fsanitize=undefined
+endif
+
+LIB = $(OUT)/libmountzip.a
+SOURCES = mount-zip.cc
+OBJECTS = $(addprefix $(OUT)/,$(SOURCES:.cc=.o))
+MAN = $(PROJECT_NAME).1
 INSTALL = install
 
 all: $(DEST)
 
 doc: $(MAN)
-	man -l $(MAN)
+	@if [ -z "$(QUIET)" ]; then man -l $(MAN); fi
+
+release:
+	python3 release.py $(VERSION)
 
 $(DEST): $(OBJECTS) $(LIB)
-	$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
+	$(CXX) $(LDFLAGS) $(OBJECTS) $(PROJECT_LDFLAGS) -o $@
 
-.cc.o:
-	$(CXX) -Ilib -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
+$(OUT)/%.o: %.cc
+	@mkdir -p $(dir $@)
+	$(CXX) -Ilib -c $(CPPFLAGS) $(PROJECT_CXXFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
 
--include $(SOURCES:.cc=.d)
+ifneq ($(filter clean,$(MAKECMDGOALS)),)
+else
+-include $(OBJECTS:.o=.d)
+endif
 
 $(LIB):
-	$(MAKE) -C lib
+	$(MAKE) -C lib OUT=$(ABS_OUT) ASAN=$(ASAN) UBSAN=$(UBSAN) DEBUG=$(DEBUG)
 
 clean:
-	rm -f $(DEST) *.o *.d
-	$(MAKE) -C tests clean
-	$(MAKE) -C lib clean
+	rm -rf $(OUT)
+	$(MAKE) -C tests clean OUT=$(ABS_OUT)
+	$(MAKE) -C lib clean OUT=$(ABS_OUT)
 
 $(MAN): README.md
-	pandoc $< -s -t man -o $@
+	pandoc $< -s -t man | \
+	sed -e 's/^\.IP \\\[bu\]/.PD 0\n.IP \\\[bu\]/g' \
+	    -e 's/^\.SH/.PD\n.SH/g' \
+	    -e 's/^\.SS/.PD\n.SS/g' \
+	    -e 's/^\.PP/.PD\n.PP/g' \
+	    -e 's/^\.TP/.PD\n.TP/g' > $@
 
 install: $(DEST)
-	$(INSTALL) -D "$(DEST)" "$(BINDIR)/$(DEST)"
-	$(INSTALL) -D -m 644 $(MAN) "$(MANDIR)/$(MAN)"
+	$(INSTALL) -D "$(DEST)" "$(DESTDIR)$(BINDIR)/mount-zip"
+	$(INSTALL) -D -m 644 $(MAN) "$(DESTDIR)$(MANDIR)/$(MAN)"
 
 install-strip: $(DEST)
-	$(INSTALL) -D -s "$(DEST)" "$(BINDIR)/$(DEST)"
-	$(INSTALL) -D -m 644 $(MAN) "$(MANDIR)/$(MAN)"
+	$(INSTALL) -D -s "$(DEST)" "$(DESTDIR)$(BINDIR)/mount-zip"
+	$(INSTALL) -D -m 644 $(MAN) "$(DESTDIR)$(MANDIR)/$(MAN)"
 
 uninstall:
-	rm "$(BINDIR)/$(DEST)" "$(MANDIR)/$(MAN)"
+	rm -f "$(DESTDIR)$(BINDIR)/mount-zip" "$(DESTDIR)$(MANDIR)/$(MAN)"
 
 debug:
 	$(MAKE) DEBUG=1 all
 
 check: $(DEST)
-	$(MAKE) -C tests check
+	$(MAKE) -C tests check OUT=$(ABS_OUT) ASAN=$(ASAN) UBSAN=$(UBSAN)
 
 check-fast: $(DEST)
-	$(MAKE) -C tests check-fast
+	$(MAKE) -C tests check-fast OUT=$(ABS_OUT) ASAN=$(ASAN) UBSAN=$(UBSAN)
 
-.PHONY: all doc debug clean check-fast install uninstall check $(LIB)
+valgrind: $(DEST)
+	$(MAKE) -C tests valgrind OUT=$(ABS_OUT)
+
+.PHONY: all doc debug clean check-fast install install-strip release test uninstall check valgrind $(LIB)
+

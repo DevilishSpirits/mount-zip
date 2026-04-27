@@ -1,0 +1,44 @@
+# Development Guide for mount-zip
+
+This document provides project-specific context, conventions, and workflows for building and contributing to the `mount-zip` repository.
+
+## Project Overview
+
+`mount-zip` is a read-only FUSE filesystem that mounts ZIP archives using the `libzip` and `ICU` libraries. The primary implementation is contained in `mount-zip.cc` and the `lib/` directory.
+
+## Build and Development
+
+### Makefile Variables
+- `DEBUG=1`: Enable debug symbols and disable optimizations.
+- `ASAN=1`: Enable AddressSanitizer for memory safety checks.
+
+### Key Makefile Targets
+- `make all`: Build the `mount-zip` binary and the man page.
+- `make check-fast`: Run the fast subset of tests.
+- `make check`: Run the full test suite.
+- `make doc`: Regenerate the `mount-zip.1` man page from `README.md`.
+- `make clean`: Remove build artifacts.
+
+## Documentation Pipeline
+
+The `README.md` file serves as both the user guide and the source for the man page.
+- **Generation**: `pandoc` converts `README.md` to `roff` format.
+- **Formatting**: The `Makefile` uses `sed` post-processing on the `pandoc` output to ensure bulleted lists are rendered compactly (using `.PD 0`) in the man page.
+- **Markdown requirement**: Bulleted lists in `README.md` should be preceded by a blank line for correct `pandoc` parsing.
+
+## Technical Standards
+
+### Memory Safety
+The project aims for full **ASAN compliance**. Always verify changes with `ASAN=1 make check-fast`.
+
+### Resource Management (RAII)
+- Use RAII guards for resource cleanup (e.g., `ScopedFile`, `Cleanup`).
+- **Shutdown Performance**: Global teardown of the virtual tree is wrapped in `#ifndef NDEBUG`. It is only performed in debug builds to keep production shutdown nearly instant.
+
+### Portability
+- The project is 32-bit compatible.
+- **Year 2038**: Always build with `-D_TIME_BITS=64` (handled in `Makefile`) to ensure correct timestamp handling on 32-bit systems.
+
+## Testing
+- **Main Runner**: `tests/blackbox/test.py`
+- **Whitebox Tests**: C++ unit tests in `tests/whitebox/` using the [GoogleTest](https://github.com/google/googletest) framework.

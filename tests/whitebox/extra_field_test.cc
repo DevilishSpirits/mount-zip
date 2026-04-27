@@ -17,66 +17,57 @@
 
 #include "extra_field.h"
 
-#include <cassert>
-#include <cerrno>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
+#include <gtest/gtest.h>
 
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
+#include <cstdint>
+
+namespace {
 
 using u8 = std::uint8_t;
 
-/**
- * LOCAL extra field with both mtime and atime present in flags
- */
-void timestamp_mtime_atime_present_local() {
+// LOCAL extra field with both mtime and atime present in flags
+TEST(ExtraFieldTest, TimestampMtimeAtimePresentLocal) {
   const u8 data[] = {1 | 2, 0xD4, 0x6F, 0xCE, 0x51, 0x72, 0xE3, 0xC7, 0x52};
   ExtraFields f;
-  assert(f.Parse(FieldId::UNIX_TIMESTAMP, data));
-  assert(f.mtime.tv_sec == 0x51CE6FD4);
-  assert(f.mtime.tv_nsec == 0);
-  assert(f.atime.tv_sec == 0x52C7E372);
-  assert(f.atime.tv_nsec == 0);
-  assert(f.ctime.tv_sec == -1);
-  assert(f.ctime.tv_nsec == 0);
+  EXPECT_TRUE(f.Parse(FieldId::UNIX_TIMESTAMP, data));
+  EXPECT_EQ(f.mtime.tv_sec, 0x51CE6FD4);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_EQ(f.atime.tv_sec, 0x52C7E372);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.ctime.tv_sec, -1);
+  EXPECT_EQ(f.ctime.tv_nsec, 0);
 }
 
-/**
- * LOCAL extra field with both mtime and creation time present in flags
- */
-void timestamp_mtime_ctime_present_local() {
+// LOCAL extra field with both mtime and creation time present in flags
+TEST(ExtraFieldTest, TimestampMtimeCtimePresentLocal) {
   const u8 data[] = {1 | 4, 0xD4, 0x6F, 0xCE, 0x51, 0x72, 0xE3, 0xC7, 0x52};
   ExtraFields f;
-  assert(f.Parse(FieldId::UNIX_TIMESTAMP, data));
-  assert(f.mtime.tv_sec == 0x51CE6FD4);
-  assert(f.mtime.tv_nsec == 0);
-  assert(f.atime.tv_sec == -1);
-  assert(f.atime.tv_nsec == 0);
-  assert(f.ctime.tv_sec == 0x52C7E372);
-  assert(f.ctime.tv_nsec == 0);
+  EXPECT_TRUE(f.Parse(FieldId::UNIX_TIMESTAMP, data));
+  EXPECT_EQ(f.mtime.tv_sec, 0x51CE6FD4);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_EQ(f.atime.tv_sec, -1);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.ctime.tv_sec, 0x52C7E372);
+  EXPECT_EQ(f.ctime.tv_nsec, 0);
 }
 
-/**
- * Bad timestamp
- */
-void timestamp_bad() {
+// Bad timestamp
+TEST(ExtraFieldTest, TimestampBad) {
   const u8 data[] = {1 | 2 | 4, 0x72, 0xE3, 0xC7, 0x52};
   ExtraFields f;
-  assert(f.Parse(FieldId::UNIX_TIMESTAMP, data));
-  assert(f.mtime.tv_sec == 0x52C7E372);
-  assert(f.mtime.tv_nsec == 0);
-  assert(f.atime.tv_sec == -1);
-  assert(f.atime.tv_nsec == 0);
-  assert(f.ctime.tv_sec == -1);
-  assert(f.ctime.tv_nsec == 0);
+  EXPECT_TRUE(f.Parse(FieldId::UNIX_TIMESTAMP, data));
+  EXPECT_EQ(f.mtime.tv_sec, 0x52C7E372);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_EQ(f.atime.tv_sec, -1);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.ctime.tv_sec, -1);
+  EXPECT_EQ(f.ctime.tv_nsec, 0);
 }
 
-/**
- * Parse PKWARE Unix Extra Field - regular file
- */
-void unix_pkware_regular() {
+// Parse PKWARE Unix Extra Field - regular file
+TEST(ExtraFieldTest, UnixPkwareRegular) {
   const u8 data[] = {
       0xD4, 0x6F, 0xCE, 0x51,  // atime
       0x72, 0xE3, 0xC7, 0x52,  // mtime
@@ -85,23 +76,21 @@ void unix_pkware_regular() {
   };
 
   ExtraFields f;
-  assert(f.Parse(FieldId::PKWARE_UNIX, data, S_IFREG | 0666));
-  assert(f.atime.tv_sec == 0x51CE6FD4);
-  assert(f.atime.tv_nsec == 0);
-  assert(f.mtime.tv_sec == 0x52C7E372);
-  assert(f.mtime.tv_nsec == 0);
-  assert(f.ctime.tv_sec == -1);
-  assert(f.ctime.tv_nsec == 0);
-  assert(f.uid == 0x0102);
-  assert(f.gid == 0x0304);
-  assert(f.dev == -1);
-  assert(f.link_target.empty());
+  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data, S_IFREG | 0666));
+  EXPECT_EQ(f.atime.tv_sec, 0x51CE6FD4);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.mtime.tv_sec, 0x52C7E372);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_EQ(f.ctime.tv_sec, -1);
+  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_EQ(f.uid, 0x0102);
+  EXPECT_EQ(f.gid, 0x0304);
+  EXPECT_EQ(f.dev, -1);
+  EXPECT_TRUE(f.link_target.empty());
 }
 
-/**
- * Parse PKWARE Unix Extra Field - block device
- */
-void unix_pkware_device() {
+// Parse PKWARE Unix Extra Field - block device
+TEST(ExtraFieldTest, UnixPkwareDevice) {
   const u8 data[] = {
       0xC8, 0x76, 0x45, 0x5D,  // atime
       0xC8, 0x76, 0x45, 0x5D,  // mtime
@@ -112,23 +101,21 @@ void unix_pkware_device() {
   };
 
   ExtraFields f;
-  assert(f.Parse(FieldId::PKWARE_UNIX, data, S_IFBLK | 0666));
-  assert(f.atime.tv_sec == 0x5D4576C8);
-  assert(f.atime.tv_nsec == 0);
-  assert(f.mtime.tv_sec == 0x5D4576C8);
-  assert(f.mtime.tv_nsec == 0);
-  assert(f.ctime.tv_sec == -1);
-  assert(f.ctime.tv_nsec == 0);
-  assert(f.uid == 0x0000);
-  assert(f.gid == 0x0006);
-  assert(f.dev == makedev(8, 1));
-  assert(f.link_target.empty());
+  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data, S_IFBLK | 0666));
+  EXPECT_EQ(f.atime.tv_sec, 0x5D4576C8);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.mtime.tv_sec, 0x5D4576C8);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_EQ(f.ctime.tv_sec, -1);
+  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_EQ(f.uid, 0x0000);
+  EXPECT_EQ(f.gid, 0x0006);
+  EXPECT_EQ(f.dev, makedev(8, 1));
+  EXPECT_TRUE(f.link_target.empty());
 }
 
-/**
- * Parse PKWARE Unix Extra Field - symlink
- */
-void unix_pkware_link() {
+// Parse PKWARE Unix Extra Field - symlink
+TEST(ExtraFieldTest, UnixPkwareLink) {
   const u8 data[] = {
       0xF3, 0x73, 0x49, 0x5D,                   // atime
       0xA9, 0x7B, 0x45, 0x5D,                   // mtime
@@ -138,75 +125,69 @@ void unix_pkware_link() {
   };
 
   ExtraFields f;
-  assert(f.Parse(FieldId::PKWARE_UNIX, data, S_IFLNK | 0777));
-  assert(f.atime.tv_sec == 0x5D4973F3);
-  assert(f.atime.tv_nsec == 0);
-  assert(f.mtime.tv_sec == 0x5D457BA9);
-  assert(f.mtime.tv_nsec == 0);
-  assert(f.ctime.tv_sec == -1);
-  assert(f.ctime.tv_nsec == 0);
-  assert(f.uid == 1000);
-  assert(f.gid == 1000);
-  assert(f.dev == -1);
-  assert(f.link_target == "regular");
+  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data, S_IFLNK | 0777));
+  EXPECT_EQ(f.atime.tv_sec, 0x5D4973F3);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.mtime.tv_sec, 0x5D457BA9);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_EQ(f.ctime.tv_sec, -1);
+  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_EQ(f.uid, 1000);
+  EXPECT_EQ(f.gid, 1000);
+  EXPECT_EQ(f.dev, -1);
+  EXPECT_EQ(f.link_target, "regular");
 }
 
-/**
- * Parse Info-ZIP Unix Extra Field (type1)
- */
-void unix_infozip1() {
+// Parse Info-ZIP Unix Extra Field (type1)
+TEST(ExtraFieldTest, UnixInfozip1) {
   // local header
   {
     const u8 data[] = {0xD4, 0x6F, 0xCE, 0x51, 0x72, 0xE3,
                        0xC7, 0x52, 0x02, 0x01, 0x04, 0x03};
     ExtraFields f;
-    assert(f.Parse(FieldId::INFOZIP_UNIX_1, data));
-    assert(f.atime.tv_sec == 0x51CE6FD4);
-    assert(f.atime.tv_nsec == 0);
-    assert(f.mtime.tv_sec == 0x52C7E372);
-    assert(f.mtime.tv_nsec == 0);
-    assert(f.uid == 0x0102);
-    assert(f.gid == 0x0304);
+    EXPECT_TRUE(f.Parse(FieldId::INFOZIP_UNIX_1, data));
+    EXPECT_EQ(f.atime.tv_sec, 0x51CE6FD4);
+    EXPECT_EQ(f.atime.tv_nsec, 0);
+    EXPECT_EQ(f.mtime.tv_sec, 0x52C7E372);
+    EXPECT_EQ(f.mtime.tv_nsec, 0);
+    EXPECT_EQ(f.uid, 0x0102);
+    EXPECT_EQ(f.gid, 0x0304);
   }
 
   // central header
   {
     const u8 data[] = {0x72, 0xE3, 0xC7, 0x52, 0xD4, 0x6F, 0xCE, 0x51};
     ExtraFields f;
-    assert(f.Parse(FieldId::INFOZIP_UNIX_1, data));
-    assert(f.atime.tv_sec == 0x52C7E372);
-    assert(f.atime.tv_nsec == 0);
-    assert(f.mtime.tv_sec == 0x51CE6FD4);
-    assert(f.mtime.tv_nsec == 0);
-    assert(f.uid == -1);
-    assert(f.gid == -1);
+    EXPECT_TRUE(f.Parse(FieldId::INFOZIP_UNIX_1, data));
+    EXPECT_EQ(f.atime.tv_sec, 0x52C7E372);
+    EXPECT_EQ(f.atime.tv_nsec, 0);
+    EXPECT_EQ(f.mtime.tv_sec, 0x51CE6FD4);
+    EXPECT_EQ(f.mtime.tv_nsec, 0);
+    EXPECT_EQ(f.uid, -1);
+    EXPECT_EQ(f.gid, -1);
   }
 }
 
-/**
- * Parse Info-ZIP Unix Extra Field (type2)
- */
-void unix_infozip2() {
+// Parse Info-ZIP Unix Extra Field (type2)
+TEST(ExtraFieldTest, UnixInfozip2) {
   // local header
   {
     const u8 data[] = {0x02, 0x01, 0x04, 0x03};
     ExtraFields f;
-    assert(f.Parse(FieldId::INFOZIP_UNIX_2, data));
-    assert(f.uid == 0x0102);
-    assert(f.gid == 0x0304);
+    EXPECT_TRUE(f.Parse(FieldId::INFOZIP_UNIX_2, data));
+    EXPECT_EQ(f.uid, 0x0102);
+    EXPECT_EQ(f.gid, 0x0304);
   }
   // central header
   {
     const u8 data[] = {0};
     ExtraFields f;
-    assert(!f.Parse(FieldId::INFOZIP_UNIX_2, data));
+    EXPECT_FALSE(f.Parse(FieldId::INFOZIP_UNIX_2, data));
   }
 }
 
-/**
- * Parse Info-ZIP New Unix Extra Field
- */
-void unix_infozip_new() {
+// Parse Info-ZIP New Unix Extra Field
+TEST(ExtraFieldTest, UnixInfozipNew) {
   const u8 data1[] = {1, 1, 0x01, 1, 0xF1};
   const u8 data4[] = {1, 4, 0x04, 0x03, 0x02, 0x01, 4, 0xF8, 0xF7, 0xF6, 0xF5};
   const u8 data16_fit[] = {1,    16,   0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -225,40 +206,38 @@ void unix_infozip_new() {
   // 8-bit
   {
     ExtraFields f;
-    assert(f.Parse(FieldId::INFOZIP_UNIX_3, data1));
-    assert(f.uid == 0x01);
-    assert(f.gid == 0xF1);
+    EXPECT_TRUE(f.Parse(FieldId::INFOZIP_UNIX_3, data1));
+    EXPECT_EQ(f.uid, 0x01);
+    EXPECT_EQ(f.gid, 0xF1);
   }
   // 32-bit
   {
     ExtraFields f;
-    assert(f.Parse(FieldId::INFOZIP_UNIX_3, data4));
-    assert(f.uid == 0x01020304);
-    assert(f.gid == 0xF5F6F7F8);
+    EXPECT_TRUE(f.Parse(FieldId::INFOZIP_UNIX_3, data4));
+    EXPECT_EQ(f.uid, 0x01020304);
+    EXPECT_EQ(f.gid, 0xF5F6F7F8);
   }
   // 128-bit fit into uid_t and gid_t
   {
     ExtraFields f;
-    assert(f.Parse(FieldId::INFOZIP_UNIX_3, data16_fit));
-    assert(f.uid == 0x0102);
-    assert(f.gid == 0xF1F2);
+    EXPECT_TRUE(f.Parse(FieldId::INFOZIP_UNIX_3, data16_fit));
+    EXPECT_EQ(f.uid, 0x0102);
+    EXPECT_EQ(f.gid, 0xF1F2);
   }
   // 128-bit, UID doesn't fit into uid_t
   {
     ExtraFields f;
-    assert(!f.Parse(FieldId::INFOZIP_UNIX_3, data16_uid_overflow));
+    EXPECT_FALSE(f.Parse(FieldId::INFOZIP_UNIX_3, data16_uid_overflow));
   }
   // 128-bit, GID doesn't fit into gid_t
   {
     ExtraFields f;
-    assert(!f.Parse(FieldId::INFOZIP_UNIX_3, data16_gid_overflow));
+    EXPECT_FALSE(f.Parse(FieldId::INFOZIP_UNIX_3, data16_gid_overflow));
   }
 }
 
-/**
- * Parse NTFS Extra Field
- */
-void ntfs_extra_field_parse() {
+// Parse NTFS Extra Field
+TEST(ExtraFieldTest, NtfsExtraFieldParse) {
   const u8 data[] = {
       0x00, 0x00, 0x00, 0x00,                          // reserved
       0x01, 0x00,                                      // tag 1
@@ -277,31 +256,14 @@ void ntfs_extra_field_parse() {
   };
 
   ExtraFields f;
-  assert(f.Parse(FieldId::NTFS_TIMESTAMP, data));
+  EXPECT_TRUE(f.Parse(FieldId::NTFS_TIMESTAMP, data));
 
-  assert(f.mtime.tv_sec == 1560435721);
-  assert(f.mtime.tv_nsec == 722114700);
-  assert(f.atime.tv_sec == 1234567890);
-  assert(f.atime.tv_nsec == 123456700);
-  assert(f.ctime.tv_sec == 0);
-  assert(f.ctime.tv_nsec == 0xFF * 100);
+  EXPECT_EQ(f.mtime.tv_sec, 1560435721);
+  EXPECT_EQ(f.mtime.tv_nsec, 722114700);
+  EXPECT_EQ(f.atime.tv_sec, 1234567890);
+  EXPECT_EQ(f.atime.tv_nsec, 123456700);
+  EXPECT_EQ(f.ctime.tv_sec, 0);
+  EXPECT_EQ(f.ctime.tv_nsec, 0xFF * 100);
 }
 
-int main(int, char**) {
-  timestamp_mtime_atime_present_local();
-  timestamp_mtime_ctime_present_local();
-
-  timestamp_bad();
-
-  unix_pkware_regular();
-  unix_pkware_device();
-  unix_pkware_link();
-
-  unix_infozip1();
-  unix_infozip2();
-  unix_infozip_new();
-
-  ntfs_extra_field_parse();
-
-  return EXIT_SUCCESS;
-}
+}  // namespace

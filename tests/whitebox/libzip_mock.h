@@ -1,6 +1,4 @@
 // Copyright 2021 Google LLC
-// Copyright 2010-2021 Alexander Galanin <al@galanin.nnov.ru>
-// http://galanin.nnov.ru/~al
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -15,31 +13,40 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include "libzip_mock.h"
+#ifndef LIBZIP_MOCK_H
+#define LIBZIP_MOCK_H
 
-#include <gtest/gtest.h>
-#include <stdlib.h>
+#include <syslog.h>
 #include <zip.h>
 #include <string>
 
-#include "tree.h"
-
-namespace {
-
-// test functions
-
-TEST(ZipOpenFailureTest, Basic) {
-  initTest();
-  g_libzip_mock.Reset();
-  g_libzip_mock.zip_open_fails = true;
-
-  try {
-    Tree t("test.zip");
-    FAIL() << "Should have thrown an exception";
-  } catch (const std::exception& e) {
-    EXPECT_EQ(std::string(e.what()),
-              "Cannot open ZIP archive 'test.zip': Expected error");
-  }
+inline void initTest() {
+  // hide almost all messages
+  setlogmask(LOG_MASK(LOG_EMERG));
 }
 
-}  // namespace
+// Global state to control libzip mock behavior.
+struct LibZipMock {
+  struct zip {
+    std::string filename;
+    zip_int64_t count = 0;
+  };
+
+  zip z;
+
+  // Configuration flags
+  bool zip_open_fails = false;
+  int zip_open_error = 0;
+
+  // Reset to default state
+  void Reset() {
+    z.filename.clear();
+    z.count = 0;
+    zip_open_fails = false;
+    zip_open_error = 0;
+  }
+};
+
+extern LibZipMock g_libzip_mock;
+
+#endif  // LIBZIP_MOCK_H

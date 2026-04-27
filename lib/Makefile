@@ -15,35 +15,50 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-DEST = libmountzip.a
+OUT ?= $(abspath ../out)
+DEST = $(OUT)/libmountzip.a
 PKG_CONFIG ?= pkg-config
 DEPS = libzip icu-uc icu-i18n
-CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(DEPS))
-CXXFLAGS += -Wall -Wextra -Wno-nullability-extension -Wno-sign-compare -Wno-missing-field-initializers -pedantic -std=c++20
-CXXFLAGS += -D_FILE_OFFSET_BITS=64 
+
+PROJECT_CXXFLAGS = -std=c++20 -Wall -Wextra -Wno-nullability-extension \
+                   -Wno-sign-compare -Wno-missing-field-initializers \
+                   -pedantic -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64
+
+PROJECT_CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(DEPS))
+
 ifeq ($(DEBUG), 1)
-CXXFLAGS += -O0 -g
+PROJECT_CXXFLAGS += -O0 -g
 else
-CXXFLAGS += -O2 -DNDEBUG
+PROJECT_CXXFLAGS += -O2 -DNDEBUG
 endif
+
+ifeq ($(ASAN), 1)
+PROJECT_CXXFLAGS += -fsanitize=address
+endif
+
+ifeq ($(UBSAN), 1)
+PROJECT_CXXFLAGS += -fsanitize=undefined
+endif
+
 SOURCES = $(sort $(wildcard *.cc))
-OBJECTS = $(SOURCES:.cc=.o)
-CLEANFILES = $(OBJECTS) $(DEST)
+OBJECTS = $(addprefix $(OUT)/lib/,$(SOURCES:.cc=.o))
 
 all: $(DEST)
-
-debug:
-	$(MAKE) DEBUG=1 all
 
 $(DEST): $(OBJECTS)
 	$(AR) $(ARFLAGS) $@ $(OBJECTS)
 
-.cc.o:
-	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
+$(OUT)/lib/%.o: %.cc
+	@mkdir -p $(dir $@)
+	$(CXX) -c $(CPPFLAGS) $(PROJECT_CXXFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
 
--include $(SOURCES:.cc=.d)
+ifneq ($(filter clean,$(MAKECMDGOALS)),)
+else
+-include $(OBJECTS:.o=.d)
+endif
 
 clean:
-	rm -f $(DEST) *.o *.d
+	rm -rf $(OUT)/lib
+	rm -f $(DEST)
 
-.PHONY: all clean debug
+.PHONY: all clean
