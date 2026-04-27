@@ -873,6 +873,17 @@ void Tree::CreateHardLink(Node* const node) {
   node->hardlink_target = target->GetTarget();
   node->hardlink_target->nlink++;
 
+  // Copy metadata for the Copy Model (fast direct access).
+  node->ino = node->hardlink_target->ino;
+  node->mode = node->hardlink_target->mode;
+  node->size = node->hardlink_target->size;
+  node->dev = node->hardlink_target->dev;
+  node->mtime = node->hardlink_target->mtime;
+  node->atime = node->hardlink_target->atime;
+  node->ctime = node->hardlink_target->ctime;
+  node->uid = node->hardlink_target->uid;
+  node->gid = node->hardlink_target->gid;
+
   LOG(DEBUG) << "Created hard link " << *node << " -> " << *target;
 }
 

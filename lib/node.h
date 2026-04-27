@@ -107,7 +107,7 @@ struct Node {
   i64 id = -1;
 
   // Inode-specific data.
-  ino_t const ino = ++ino_count;
+  ino_t ino = ++ino_count;
   zip_uint64_t size = 0;
   dev_t dev = 0;
 
@@ -177,7 +177,7 @@ struct Node {
 
   Stat GetStat() const;
 
-  FileType GetType() const { return GetFileType(GetTarget()->mode); }
+  FileType GetType() const { return GetFileType(mode); }
   bool IsDir() const { return GetType() == FileType::Directory; }
 
   // Gets the full absolute path of this node.

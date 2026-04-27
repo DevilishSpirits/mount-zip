@@ -157,29 +157,28 @@ void Node::Init(Node& node, zip_t* const zip, const i64 id, const mode_t mode) {
 
 Stat Node::GetStat() const {
   Stat st = {};
-  const Node* const t = GetTarget();
-  st.st_ino = t->ino;
-  st.st_nlink = t->nlink;
+  st.st_ino = ino;
+  st.st_nlink = GetTarget()->nlink;
   st.st_blksize = block_size;
-  st.st_blocks = (t->size + block_size - 1) / block_size;
-  st.st_size = t->size;
-  st.st_rdev = t->dev;
+  st.st_blocks = (size + block_size - 1) / block_size;
+  st.st_size = size;
+  st.st_rdev = dev;
 
 #if __APPLE__
-  st.st_atimespec = t->atime;
-  st.st_mtimespec = t->mtime;
-  st.st_ctimespec = t->ctime;
+  st.st_atimespec = atime;
+  st.st_mtimespec = mtime;
+  st.st_ctimespec = ctime;
 #else
-  st.st_atim = t->atime;
-  st.st_mtim = t->mtime;
-  st.st_ctim = t->ctime;
+  st.st_atim = atime;
+  st.st_mtim = mtime;
+  st.st_ctim = ctime;
 #endif
 
   if (original_permissions) {
-    st.st_uid = t->uid;
-    st.st_gid = t->gid;
-    st.st_mode = t->mode;
-    switch (GetFileType(t->mode)) {
+    st.st_uid = uid;
+    st.st_gid = gid;
+    st.st_mode = mode;
+    switch (GetType()) {
       case FileType::Directory:
         st.st_mode &= ~dmask;
         break;
@@ -193,7 +192,7 @@ Stat Node::GetStat() const {
   } else {
     st.st_uid = g_uid;
     st.st_gid = g_gid;
-    const FileType ft = GetFileType(t->mode);
+    const FileType ft = GetType();
     switch (ft) {
       case FileType::Directory:
         st.st_mode = static_cast<mode_t>(S_IFDIR | (0777 & ~dmask));
@@ -205,7 +204,7 @@ Stat Node::GetStat() const {
 
       default:
         st.st_mode = 0666;
-        if (const mode_t xbits = 0111; (t->mode & xbits) != 0) {
+        if (const mode_t xbits = 0111; (mode & xbits) != 0) {
           st.st_mode |= xbits;
         }
         st.st_mode &= ~fmask;
