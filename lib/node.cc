@@ -1,6 +1,5 @@
 // Copyright 2021 Google LLC
-// Copyright 2019 Alexander Galanin <al@galanin.nnov.ru>
-// http://galanin.nnov.ru/~al
+// Copyright 2008-2021 Alexander Galanin <al@galanin.nnov.ru>
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -15,16 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include "node.h"
+
 #include <cassert>
 #include <ctime>
 #include <memory>
+#include <vector>
 
 #include <zip.h>
 
-#include "data_node.h"
 #include "error.h"
 #include "extra_field.h"
-#include "file_node.h"
 
 std::ostream& operator<<(std::ostream& out, const FileType t) {
   switch (t) {
@@ -47,16 +47,16 @@ std::ostream& operator<<(std::ostream& out, const FileType t) {
   }
 }
 
-const timespec DataNode::g_now = {.tv_sec = time(nullptr)};
-const uid_t DataNode::g_uid = getuid();
-const gid_t DataNode::g_gid = getgid();
-mode_t DataNode::fmask = 0022;
-mode_t DataNode::dmask = 0022;
-bool DataNode::original_permissions = false;
+const timespec Node::g_now = {.tv_sec = time(nullptr)};
+const uid_t Node::g_uid = getuid();
+const gid_t Node::g_gid = getgid();
+mode_t Node::fmask = 0022;
+mode_t Node::dmask = 0022;
+bool Node::original_permissions = false;
 
-ino_t DataNode::ino_count = 0;
+ino_t Node::ino_count = 0;
 
-DataNode DataNode::Make(zip_t* const zip, const i64 id, const mode_t mode) {
+void Node::Init(Node& node, zip_t* const zip, const i64 id, const mode_t mode) {
   assert(zip);
   zip_stat_t st;
   if (zip_stat_index(zip, id, 0, &st) < 0) {
@@ -70,8 +70,9 @@ DataNode DataNode::Make(zip_t* const zip, const i64 id, const mode_t mode) {
   // directories (see zip_stat_index.c from libzip)
   assert((st.valid & need_valid) == need_valid);
 
-  DataNode node{
-      .id = id, .mode = mode, .size = st.size, .mtime = {.tv_sec = st.mtime}};
+  node.mode = mode;
+  node.size = st.size;
+  node.mtime = {.tv_sec = st.mtime};
 
   bool has_pkware_field = false;
 
@@ -88,12 +89,11 @@ DataNode DataNode::Make(zip_t* const zip, const i64 id, const mode_t mode) {
         UNIX_TIMESTAMP, NTFS_TIMESTAMP}) {
     zip_flags_t const flags = ZIP_FL_CENTRAL | ZIP_FL_LOCAL;
     zip_uint16_t const n = zip_file_extra_fields_count_by_id(
-        zip, node.id, static_cast<zip_uint16_t>(field_id), flags);
+        zip, id, static_cast<zip_uint16_t>(field_id), flags);
     for (zip_uint16_t i = 0; i < n; ++i) {
       zip_uint16_t field_size;
       const auto* field_data = zip_file_extra_field_get_by_id(
-          zip, node.id, static_cast<zip_uint16_t>(field_id), i, &field_size,
-          flags);
+          zip, id, static_cast<zip_uint16_t>(field_id), i, &field_size, flags);
 
       ExtraFields f;
       if (!field_data || field_size == 0 ||
@@ -144,34 +144,33 @@ DataNode DataNode::Make(zip_t* const zip, const i64 id, const mode_t mode) {
   if (S_ISFIFO(mode) && (node.size != 0 || !has_pkware_field)) {
     SetFileType(&node.mode, FileType::File);
   }
-
-  return node;
 }
 
-DataNode::operator Stat() const {
+Node::operator Stat() const {
   Stat st = {};
-  st.st_ino = ino;
-  st.st_nlink = nlink;
+  const Node& t = GetTarget();
+  st.st_ino = t.ino;
+  st.st_nlink = t.nlink;
   st.st_blksize = block_size;
-  st.st_blocks = (size + block_size - 1) / block_size;
-  st.st_size = size;
-  st.st_rdev = dev;
+  st.st_blocks = (t.size + block_size - 1) / block_size;
+  st.st_size = t.size;
+  st.st_rdev = t.dev;
 
 #if __APPLE__
-  st.st_atimespec = atime;
-  st.st_mtimespec = mtime;
-  st.st_ctimespec = ctime;
+  st.st_atimespec = t.atime;
+  st.st_mtimespec = t.mtime;
+  st.st_ctimespec = t.ctime;
 #else
-  st.st_atim = atime;
-  st.st_mtim = mtime;
-  st.st_ctim = ctime;
+  st.st_atim = t.atime;
+  st.st_mtim = t.mtime;
+  st.st_ctim = t.ctime;
 #endif
 
   if (original_permissions) {
-    st.st_uid = uid;
-    st.st_gid = gid;
-    st.st_mode = mode;
-    switch (GetFileType(mode)) {
+    st.st_uid = t.uid;
+    st.st_gid = t.gid;
+    st.st_mode = t.mode;
+    switch (GetFileType(t.mode)) {
       case FileType::Directory:
         st.st_mode &= ~dmask;
         break;
@@ -185,7 +184,7 @@ DataNode::operator Stat() const {
   } else {
     st.st_uid = g_uid;
     st.st_gid = g_gid;
-    const FileType ft = GetFileType(mode);
+    const FileType ft = GetFileType(t.mode);
     switch (ft) {
       case FileType::Directory:
         st.st_mode = static_cast<mode_t>(S_IFDIR | (0777 & ~dmask));
@@ -197,7 +196,7 @@ DataNode::operator Stat() const {
 
       default:
         st.st_mode = 0666;
-        if (const mode_t xbits = 0111; (mode & xbits) != 0) {
+        if (const mode_t xbits = 0111; (t.mode & xbits) != 0) {
           st.st_mode |= xbits;
         }
         st.st_mode &= ~fmask;
@@ -208,16 +207,79 @@ DataNode::operator Stat() const {
   return st;
 }
 
-bool DataNode::CacheAll(zip_t* const zip,
-                        const FileNode& file_node,
-                        std::function<void(ssize_t)> progress) {
-  assert(!cached_reader);
-  if (size == 0) {
-    LOG(DEBUG) << "No need to cache " << file_node << ": Empty file";
+std::string Node::GetPath() const {
+  if (!parent) {
+    assert(name == "/");
+    return "/";
+  }
+
+  std::vector<const Node*> nodes;
+  nodes.reserve(32);
+
+  size_t n = 0;
+  const Node* node = this;
+  do {
+    assert(node->parent);
+    nodes.push_back(node);
+    n += node->name.size() + 1;
+    node = node->parent;
+  } while (node->parent);
+
+  assert(node);
+  assert(!node->parent);
+  assert(node->name == "/");
+
+  std::string path;
+  path.reserve(n);
+
+  do {
+    assert(!nodes.empty());
+    path += '/';
+    path += nodes.back()->name;
+    nodes.pop_back();
+  } while (!nodes.empty());
+
+  assert(nodes.empty());
+  assert(path.size() == n);
+  return path;
+}
+
+void Node::AddChild(Node* const child) {
+  assert(child);
+  assert(this == child->parent);
+  children.push_back(*child);
+}
+
+Node* Node::GetUniqueChildDirectory() {
+  if (!IsDir()) {
+    return nullptr;
+  }
+
+  Node::Children::iterator const it = children.begin();
+  if (it == children.end()) {
+    return nullptr;
+  }
+
+  if (std::next(it) != children.end()) {
+    return nullptr;
+  }
+
+  if (!it->IsDir()) {
+    return nullptr;
+  }
+
+  return &*it;
+}
+
+bool Node::CacheAll(std::function<void(ssize_t)> progress) {
+  const Node& t = GetTarget();
+  assert(!t.cached_reader);
+  if (t.size == 0) {
+    LOG(DEBUG) << "No need to cache " << *this << ": Empty file";
     return false;
   }
 
-  ZipFile file = Reader::Open(zip, id);
+  ZipFile file = Reader::Open(t.zip, t.id);
   assert(file);
 
 #if LIBZIP_VERSION_MAJOR > 1 ||      \
@@ -229,7 +291,7 @@ bool DataNode::CacheAll(zip_t* const zip,
 #else
   // For libzip < 1.9.1
   zip_stat_t st;
-  const bool seekable = zip_stat_index(zip, id, 0, &st) == 0 &&
+  const bool seekable = zip_stat_index(t.zip, t.id, 0, &st) == 0 &&
                         (st.valid & ZIP_STAT_COMP_METHOD) != 0 &&
                         st.comp_method == ZIP_CM_STORE &&
                         (st.valid & ZIP_STAT_ENCRYPTION_METHOD) != 0 &&
@@ -237,27 +299,28 @@ bool DataNode::CacheAll(zip_t* const zip,
 #endif
 
   if (seekable) {
-    LOG(DEBUG) << "No need to cache " << file_node << ": File is seekable";
+    LOG(DEBUG) << "No need to cache " << *this << ": File is seekable";
     return false;
   }
 
-  cached_reader = CacheFile(std::move(file), id, size, std::move(progress));
+  t.cached_reader =
+      CacheFile(std::move(file), t.id, t.size, std::move(progress));
   return true;
 }
 
-Reader::Ptr DataNode::GetReader(zip_t* const zip,
-                                const FileNode& file_node) const {
-  if (cached_reader) {
-    LOG(DEBUG) << *cached_reader << ": Reusing Cached " << *cached_reader
-               << " for " << file_node;
-    return cached_reader->AddRef();
+Reader::Ptr Node::GetReader() const {
+  const Node& t = GetTarget();
+  if (t.cached_reader) {
+    LOG(DEBUG) << *t.cached_reader << ": Reusing Cached " << *t.cached_reader
+               << " for " << *this;
+    return t.cached_reader->AddRef();
   }
 
-  if (!target.empty()) {
-    return Reader::Ptr(new StringReader(target));
+  if (!t.target.empty()) {
+    return Reader::Ptr(new StringReader(t.target));
   }
 
-  ZipFile file = Reader::Open(zip, id);
+  ZipFile file = Reader::Open(t.zip, t.id);
   assert(file);
 
 #if LIBZIP_VERSION_MAJOR > 1 ||      \
@@ -269,18 +332,28 @@ Reader::Ptr DataNode::GetReader(zip_t* const zip,
 #else
   // For libzip < 1.9.1
   zip_stat_t st;
-  const bool seekable = zip_stat_index(zip, id, 0, &st) == 0 &&
+  const bool seekable = zip_stat_index(t.zip, t.id, 0, &st) == 0 &&
                         (st.valid & ZIP_STAT_COMP_METHOD) != 0 &&
                         st.comp_method == ZIP_CM_STORE &&
                         (st.valid & ZIP_STAT_ENCRYPTION_METHOD) != 0 &&
                         st.encryption_method == ZIP_EM_NONE;
 #endif
 
-  Reader::Ptr reader(seekable ? new UnbufferedReader(std::move(file), id, size)
-                              : new BufferedReader(zip, std::move(file), id,
-                                                   size, &cached_reader));
+  Reader::Ptr reader(seekable
+                         ? new UnbufferedReader(std::move(file), t.id, t.size)
+                         : new BufferedReader(t.zip, std::move(file), t.id,
+                                              t.size, &t.cached_reader));
 
-  LOG(DEBUG) << *reader << ": Opened " << file_node
-             << ", seekable = " << seekable;
+  LOG(DEBUG) << *reader << ": Opened " << *this << ", seekable = " << seekable;
   return reader;
+}
+
+std::ostream& operator<<(std::ostream& out, const Node& node) {
+  out << node.GetType() << " [" << node.ino;
+
+  if (node.hardlink_target) {
+    out << "->" << node.hardlink_target->ino;
+  }
+
+  return out << "] " << Path(node.GetPath());
 }

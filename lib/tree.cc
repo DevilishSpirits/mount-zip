@@ -348,12 +348,12 @@ Tree::~Tree() {
 #ifndef NDEBUG
   files_by_original_path_.clear();
 
-  for (FileNode& node : files_by_path_) {
+  for (Node& node : files_by_path_) {
     node.children.clear();
   }
 #endif
 
-  files_by_path_.clear_and_dispose(std::default_delete<FileNode>());
+  files_by_path_.clear_and_dispose(std::default_delete<Node>());
 }
 
 size_t Tree::GetBucketCount(const Zips& zips) {
@@ -447,7 +447,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
     }
   }
 
-  std::vector<FileNode*> hard_links;
+  std::vector<Node*> hard_links;
   Beat should_display_progress;
   i64 total_extracted_size = 0;
   const auto progress = [&should_display_progress, &total_uncompressed_size,
@@ -495,20 +495,15 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
 
       if (type == FileType::Directory) {
         if (!opts_.include_directories) {
-          LOG(INFO) << "Skipped " << type << " [" << ++DataNode::ino_count
-                    << "] " << Path(path);
+          LOG(INFO) << "Skipped " << type << " [" << ++Node::ino_count << "] "
+                    << Path(path);
           continue;
         }
 
-        FileNode* const node = CreateDir(path);
+        Node* const node = CreateDir(path);
         assert(node);
-        assert(!node->link);
-        const ino_t ino = node->data.ino;
-        const nlink_t nlink = node->data.nlink;
-        assert(nlink >= 2);
-        node->data = DataNode::Make(z, id, mode);
-        node->data.ino = ino;
-        node->data.nlink = nlink;
+        assert(!node->hardlink_target);
+        Node::Init(*node, z, id, mode);
         node->original_path = Path(original_path).WithoutTrailingSeparator();
         total_block_count_ += 1;
         assert(total_uncompressed_size >= size);
@@ -519,7 +514,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
       if (type != FileType::File &&
           (type == FileType::Symlink ? !opts_.include_symlinks
                                      : !opts_.include_special_files)) {
-        LOG(INFO) << "Skipped " << type << " [" << ++DataNode::ino_count << "] "
+        LOG(INFO) << "Skipped " << type << " [" << ++Node::ino_count << "] "
                   << Path(path);
         assert(total_uncompressed_size >= size);
         total_uncompressed_size -= size;
@@ -527,7 +522,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
       }
 
       if (is_hard_link && !opts_.include_hard_links) {
-        LOG(INFO) << "Skipped " << type << " [" << ++DataNode::ino_count << "] "
+        LOG(INFO) << "Skipped " << type << " [" << ++Node::ino_count << "] "
                   << Path(path);
         assert(total_uncompressed_size >= size);
         total_uncompressed_size -= size;
@@ -535,14 +530,14 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
       }
 
       const auto [parent_path, name] = Path(path).Split();
-      FileNode* const parent = CreateDir(parent_path);
-      FileNode* const node = CreateFile(z, id, parent, name, mode);
+      Node* const parent = CreateDir(parent_path);
+      Node* const node = CreateFile(z, id, parent, name, mode);
       assert(node->parent == parent);
       parent->AddChild(node);
       node->original_path = Path(original_path).WithoutTrailingSeparator();
       files_by_original_path_.insert(*node);
       total_block_count_ += 1;
-      total_block_count_ += node->operator DataNode::Stat().st_blocks;
+      total_block_count_ += node->operator Node::Stat().st_blocks;
 
       if (is_hard_link) {
         hard_links.push_back(node);
@@ -595,7 +590,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
   }
 
   // Add hard links
-  for (FileNode* const node : hard_links) {
+  for (Node* const node : hard_links) {
     CreateHardLink(node);
   }
 
@@ -609,7 +604,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
     if (opts_.merge) {
       Trim(*root_);
     } else {
-      for (FileNode& c : root_->children) {
+      for (Node& c : root_->children) {
         Trim(c);
       }
     }
@@ -619,7 +614,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
   LOG(DEBUG) << "Blocks = " << total_block_count_;
 }
 
-void Tree::CheckPassword(const FileNode* const node) {
+void Tree::CheckPassword(const Node* const node) {
   assert(node);
 
   if (checked_password_) {
@@ -729,7 +724,7 @@ Tree::EntryAttributes Tree::GetEntryAttributes(
   return {mode, is_hard_link};
 }
 
-FileNode* Tree::Attach(FileNode::Ptr node) {
+Node* Tree::Attach(Node::Ptr node) {
   assert(node);
   const auto [pos, ok] = files_by_path_.insert(*node);
   if (ok) {
@@ -767,25 +762,24 @@ FileNode* Tree::Attach(FileNode::Ptr node) {
   }
 }
 
-FileNode* Tree::CreateFile(zip_t* const z,
-                           i64 id,
-                           FileNode* parent,
-                           std::string_view name,
-                           mode_t mode) {
+Node* Tree::CreateFile(zip_t* const z,
+                       i64 id,
+                       Node* parent,
+                       std::string_view name,
+                       mode_t mode) {
   assert(parent);
   assert(!name.empty());
   assert(id >= 0);
-  return Attach(FileNode::Ptr(new FileNode{.zip = z,
-                                           .id = id,
-                                           .data = DataNode::Make(z, id, mode),
-                                           .parent = parent,
-                                           .name = std::string(name)}));
+  Node::Ptr node(new Node{
+      .zip = z, .id = id, .parent = parent, .name = std::string(name)});
+  Node::Init(*node, z, id, mode);
+  return Attach(std::move(node));
 }
 
-void Tree::CreateHardLink(FileNode* const node) {
+void Tree::CreateHardLink(Node* const node) {
   assert(node);
 
-  const Path target_path = Path(node->data.target);
+  const Path target_path = Path(node->target);
   if (target_path.empty()) {
     LOG(ERROR) << "Cannot get target for hard link " << *node;
     return;
@@ -799,7 +793,7 @@ void Tree::CreateHardLink(FileNode* const node) {
     return;
   }
 
-  const FileNode& target = *it;
+  Node& target = *it;
 
   if (&node->GetTarget() == &target.GetTarget()) {
     LOG(ERROR) << "Self-referencial hard link " << *node << " -> " << target;
@@ -816,29 +810,29 @@ void Tree::CreateHardLink(FileNode* const node) {
     return;
   }
 
-  node->link = &target.GetTarget();
-  node->link->nlink++;
+  node->hardlink_target = &target.GetTarget();
+  node->hardlink_target->nlink++;
 
   LOG(DEBUG) << "Created hard link " << *node << " -> " << target;
 }
 
-FileNode* Tree::Find(std::string_view path) {
+Node* Tree::Find(std::string_view path) {
   const auto it = files_by_path_.find(Path(path).WithoutTrailingSeparator(),
                                       files_by_path_.hash_function(),
                                       files_by_path_.key_eq());
   return it == files_by_path_.end() ? nullptr : &*it;
 }
 
-FileNode* Tree::CreateDir(std::string_view path) {
+Node* Tree::CreateDir(std::string_view path) {
   if (!opts_.include_directories) {
     return root_;
   }
 
   const auto [parent_path, name] = Path(path).Split();
-  FileNode::Ptr to_rename;
-  FileNode* parent;
+  Node::Ptr to_rename;
+  Node* parent;
 
-  if (FileNode* const node = Find(path)) {
+  if (Node* const node = Find(path)) {
     if (node->IsDir()) {
       return node;
     }
@@ -858,16 +852,17 @@ FileNode* Tree::CreateDir(std::string_view path) {
   }
 
   assert(parent);
-  FileNode::Ptr child(new FileNode{.data = {.nlink = 2, .mode = S_IFDIR | 0755},
-                                   .parent = parent,
-                                   .name = std::string(name)});
+  Node::Ptr child(new Node{.nlink = 2,
+                           .mode = S_IFDIR | 0755,
+                           .parent = parent,
+                           .name = std::string(name)});
   assert(child->GetPath() == path);
   parent->AddChild(child.get());
   [[maybe_unused]] const auto [pos, ok] = files_by_path_.insert(*child);
   assert(ok);
-  FileNode* const ret = child.release();  // Now owned by |files_by_path_|.
-  assert(!parent->link);
-  parent->data.nlink++;
+  Node* const ret = child.release();  // Now owned by |files_by_path_|.
+  assert(!parent->hardlink_target);
+  parent->nlink++;
 
   if (to_rename) {
     Attach(std::move(to_rename));
@@ -895,8 +890,8 @@ Tree::Zips Tree::OpenZips(std::span<const std::string> paths) {
   return zips;
 }
 
-void Tree::Trim(FileNode& a) {
-  FileNode* p = a.GetUniqueChildDirectory();
+void Tree::Trim(Node& a) {
+  Node* p = a.GetUniqueChildDirectory();
   if (!p) {
     return;
   }
@@ -904,20 +899,38 @@ void Tree::Trim(FileNode& a) {
   Deindex(*p);
   a.children.clear();
 
-  while (FileNode* const q = p->GetUniqueChildDirectory()) {
+  while (Node* const q = p->GetUniqueChildDirectory()) {
     p->children.clear();
     p = q;
   }
 
   LOG(DEBUG) << "Collapsing " << *p << " into " << a;
 
-  a.data = std::move(p->data);
-  assert(!a.link);
-  assert(!p->link);
+  // Move `p`'s data into `a`.
+  a.uid = p->uid;
+  a.gid = p->gid;
+  a.dev = p->dev;
+  a.size = p->size;
+  a.mtime = p->mtime;
+  a.atime = p->atime;
+  a.ctime = p->ctime;
+  a.target = std::move(p->target);
+  a.cached_reader = std::move(p->cached_reader);
+  a.mode = p->mode;
+  a.nlink = p->nlink;
+  a.zip = p->zip;
+  a.id = p->id;
+
+  // a.parent and a.name stay as they are.
+  a.original_path = p->original_path;
+
+  // They should be Directories, therefore they don't have hard link targets.
+  assert(!p->hardlink_target);
+  assert(!a.hardlink_target);
   a.children = std::move(p->children);
   assert(p->children.empty());
 
-  for (FileNode& c : a.children) {
+  for (Node& c : a.children) {
     assert(c.parent == p);
     c.parent = &a;
     Reindex(c);
@@ -929,24 +942,24 @@ void Tree::Trim(FileNode& a) {
 
   while (p != &a) {
     total_block_count_ -= 1;
-    FileNode* const q = p->parent;
+    Node* const q = p->parent;
     delete p;
     p = q;
   }
 }
 
-void Tree::Deindex(FileNode& node) {
-  for (FileNode& c : node.children) {
+void Tree::Deindex(Node& node) {
+  for (Node& c : node.children) {
     Deindex(c);
   }
   files_by_path_.erase(files_by_path_.iterator_to(node));
 }
 
-void Tree::Reindex(FileNode& node) {
+void Tree::Reindex(Node& node) {
   [[maybe_unused]] bool const ok = files_by_path_.insert(node).second;
   assert(ok);
 
-  for (FileNode& c : node.children) {
+  for (Node& c : node.children) {
     Reindex(c);
   }
 }

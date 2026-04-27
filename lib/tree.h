@@ -24,7 +24,7 @@
 
 #include <boost/container_hash/hash.hpp>
 
-#include "file_node.h"
+#include "node.h"
 
 // Holds the ZIP filesystem tree.
 class Tree {
@@ -76,9 +76,9 @@ class Tree {
 
   // Finds an existing node with the given |path|.
   // Returns a null pointer if no matching node can be found.
-  FileNode* Find(std::string_view path);
+  Node* Find(std::string_view path);
 
-  static const blksize_t block_size = DataNode::block_size;
+  static const blksize_t block_size = Node::block_size;
   blkcnt_t GetBlockCount() const { return total_block_count_; }
   fsfilcnt_t GetNodeCount() const { return files_by_path_.size(); }
 
@@ -111,24 +111,24 @@ class Tree {
 
   // Finds an existing dir node with the given |path|, or create one (and all
   // the needed intermediary nodes).
-  FileNode* CreateDir(std::string_view path);
+  Node* CreateDir(std::string_view path);
 
   // String conversion function.
   using ToUtf8 = std::function<std::string_view(std::string_view)>;
 
   // Creates and attaches a node for an existing file or dir entry.
-  FileNode* CreateFile(zip_t* z,
-                       i64 id,
-                       FileNode* parent,
-                       std::string_view name,
-                       mode_t mode);
+  Node* CreateFile(zip_t* z,
+                   i64 id,
+                   Node* parent,
+                   std::string_view name,
+                   mode_t mode);
 
   // Creates and attaches a hard link node.
-  void CreateHardLink(FileNode* node);
+  void CreateHardLink(Node* node);
 
   // Attaches the given |node|, renaming it if necessary to prevent name
   // collisions.
-  FileNode* Attach(FileNode::Ptr node);
+  Node* Attach(Node::Ptr node);
 
   // Reads the password from the standard input.
   // Returns true if a non-empty password was read.
@@ -136,11 +136,11 @@ class Tree {
 
   // If necessary, ask for a password and check it on the given entry.
   // Throws ZipError if the password doesn't match.
-  void CheckPassword(const FileNode* node);
+  void CheckPassword(const Node* node);
 
-  void Trim(FileNode& dest);
-  void Deindex(FileNode& node);
-  void Reindex(FileNode& node);
+  void Trim(Node& dest);
+  void Deindex(Node& node);
+  void Reindex(Node& node);
 
   // Computes the optimal number of buckets for the hash tables indexing the
   // given ZIP archives.
@@ -152,37 +152,35 @@ class Tree {
   // Extraction options.
   const Options opts_;
 
-  // Path extractor for FileNode.
+  // Path extractor for Node.
   struct GetPath {
     using type = std::string;
-    std::string operator()(const FileNode& node) const {
-      return node.GetPath();
-    }
+    std::string operator()(const Node& node) const { return node.GetPath(); }
   };
 
   using OriginalPath = std::pair<const zip_t*, std::string_view>;
 
-  // Original path extractor for FileNode.
+  // Original path extractor for Node.
   struct GetOriginalPath {
     using type = OriginalPath;
-    OriginalPath operator()(const FileNode& node) const {
+    OriginalPath operator()(const Node& node) const {
       return {node.zip, node.original_path};
     }
   };
 
-  using FilesByPath = bi::unordered_set<
-      FileNode,
-      bi::member_hook<FileNode, FileNode::ByPath, &FileNode::by_path>,
-      bi::constant_time_size<true>,
-      bi::power_2_buckets<true>,
-      bi::compare_hash<true>,
-      bi::key_of_value<GetPath>,
-      bi::equal<std::equal_to<std::string_view>>,
-      bi::hash<boost::hash<std::string_view>>>;
+  using FilesByPath =
+      bi::unordered_set<Node,
+                        bi::member_hook<Node, Node::ByPath, &Node::by_path>,
+                        bi::constant_time_size<true>,
+                        bi::power_2_buckets<true>,
+                        bi::compare_hash<true>,
+                        bi::key_of_value<GetPath>,
+                        bi::equal<std::equal_to<std::string_view>>,
+                        bi::hash<boost::hash<std::string_view>>>;
 
   using FilesByOriginalPath = bi::unordered_set<
-      FileNode,
-      bi::member_hook<FileNode, FileNode::ByPath, &FileNode::by_original_path>,
+      Node,
+      bi::member_hook<Node, Node::ByPath, &Node::by_original_path>,
       bi::constant_time_size<false>,
       bi::power_2_buckets<true>,
       bi::compare_hash<true>,
@@ -199,17 +197,16 @@ class Tree {
   const std::unique_ptr<BucketByOriginalPath[]> buckets_by_original_path_{
       new BucketByOriginalPath[bucket_count_]};
 
-  // Collection of all FileNodes indexed by full path.
+  // Collection of all Nodes indexed by full path.
   // Owns the nodes it references.
   FilesByPath files_by_path_{{buckets_by_path_.get(), bucket_count_}};
 
-  // Collection of FileNodes indexed by original path.
+  // Collection of Nodes indexed by original path.
   FilesByOriginalPath files_by_original_path_{
       {buckets_by_original_path_.get(), bucket_count_}};
 
   // Root node.
-  FileNode* const root_ =
-      new FileNode{.data = {.nlink = 2, .mode = S_IFDIR | 0755}, .name = "/"};
+  Node* const root_ = new Node{.nlink = 2, .mode = S_IFDIR | 0755, .name = "/"};
 
   blkcnt_t total_block_count_ = 1;
 

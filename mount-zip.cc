@@ -60,9 +60,9 @@
 #include <syslog.h>
 #include <unistd.h>
 
-#include "data_node.h"
 #include "error.h"
 #include "log.h"
+#include "node.h"
 #include "path.h"
 #include "reader.h"
 #include "tree.h"
@@ -147,14 +147,14 @@ Tree* g_tree = nullptr;
 struct Operations : fuse_operations {
  private:
   struct FileHandle {
-    const FileNode* const node;
+    const Node* const node;
     Reader::Ptr reader;
   };
 
   // Converts a C++ exception into a negative error code.
   // Also logs the error.
   // Must be called from within a catch block.
-  static int ToError(std::string_view const action, const FileNode& n) {
+  static int ToError(std::string_view const action, const Node& n) {
     try {
       throw;
     } catch (const std::bad_alloc&) {
@@ -170,7 +170,7 @@ struct Operations : fuse_operations {
   }
 
   // Finds a node by full path.
-  static const FileNode* FindNode(std::string_view const path) {
+  static const Node* FindNode(std::string_view const path) {
     assert(g_tree);
     return g_tree->Find(path);
   }
@@ -184,7 +184,7 @@ struct Operations : fuse_operations {
     fuse_file_info* const fi = nullptr;
 #endif
 
-    const FileNode* n;
+    const Node* n;
 
     if (fi) {
       FileHandle* const h = reinterpret_cast<FileHandle*>(fi->fh);
@@ -206,7 +206,7 @@ struct Operations : fuse_operations {
 
   static int OpenDir(const char* const path, fuse_file_info* const fi) {
     assert(path);
-    const FileNode* const n = FindNode(path);
+    const Node* const n = FindNode(path);
     if (!n) {
       LOG(ERROR) << "Cannot open " << Path(path) << ": No such item";
       return -ENOENT;
@@ -218,7 +218,7 @@ struct Operations : fuse_operations {
     }
 
     assert(fi);
-    static_assert(sizeof(fi->fh) >= sizeof(FileNode*));
+    static_assert(sizeof(fi->fh) >= sizeof(Node*));
     fi->fh = reinterpret_cast<uintptr_t>(n);
 #if FUSE_USE_VERSION >= 30
     fi->cache_readdir = true;
@@ -238,7 +238,7 @@ struct Operations : fuse_operations {
 #endif
     assert(filler);
     assert(fi);
-    const FileNode* const n = reinterpret_cast<const FileNode*>(fi->fh);
+    const Node* const n = reinterpret_cast<const Node*>(fi->fh);
     assert(n);
     assert(n->IsDir());
 
@@ -259,14 +259,14 @@ struct Operations : fuse_operations {
     struct stat z = *n;
     add(".", &z);
 
-    if (const FileNode* const parent = n->parent) {
+    if (const Node* const parent = n->parent) {
       z = *parent;
       add("..", &z);
     } else {
       add("..", nullptr);
     }
 
-    for (const FileNode& child : n->children) {
+    for (const Node& child : n->children) {
       z = child;
       add(child.name.c_str(), &z);
     }
@@ -282,7 +282,7 @@ struct Operations : fuse_operations {
     assert(path);
     assert(fi);
 
-    const FileNode* const n = FindNode(path);
+    const Node* const n = FindNode(path);
     if (!n) {
       LOG(ERROR) << "Cannot open " << Path(path) << ": No such item";
       return -ENOENT;
@@ -319,7 +319,7 @@ struct Operations : fuse_operations {
     assert(fi);
     FileHandle* const h = reinterpret_cast<FileHandle*>(fi->fh);
     assert(h);
-    const FileNode* const n = h->node;
+    const Node* const n = h->node;
     assert(n);
 
     try {
@@ -341,7 +341,7 @@ struct Operations : fuse_operations {
     FileHandle* const h = reinterpret_cast<FileHandle*>(fi->fh);
     assert(h);
 
-    const FileNode* const n = h->node;
+    const Node* const n = h->node;
     assert(n);
     delete h;
 
@@ -356,7 +356,7 @@ struct Operations : fuse_operations {
     assert(buf);
     assert(size > 1);
 
-    const FileNode* const n = FindNode(path);
+    const Node* const n = FindNode(path);
     if (!n) {
       LOG(ERROR) << "Cannot read link " << Path(path) << ": No such item";
       return -ENOENT;
@@ -477,11 +477,14 @@ static int ProcessArg(void* data,
 #if FUSE_USE_VERSION >= 30
         fuse_opt_add_arg(outargs, "--help");
         char empty[] = "";
+        char* const argv0 = outargs->argv[0];
         outargs->argv[0] = empty;
+        fuse_main(outargs->argc, outargs->argv, &operations, nullptr);
+        outargs->argv[0] = argv0;
 #else
         fuse_opt_add_arg(outargs, "-ho");  // I think ho means "help output".
-#endif
         fuse_main(outargs->argc, outargs->argv, &operations, nullptr);
+#endif
       }
       std::exit(EXIT_SUCCESS);
 
@@ -554,7 +557,7 @@ static int ProcessArg(void* data,
       return DISCARD;
 
     case KEY_DEFAULT_PERMISSIONS:
-      DataNode::original_permissions = true;
+      Node::original_permissions = true;
       return DISCARD;
 
 #if FUSE_USE_VERSION >= 30
@@ -653,8 +656,8 @@ int main(int argc, char* argv[]) try {
     return EXIT_FAILURE;
   }
 
-  DataNode::dmask = param.dmask & 07777;
-  DataNode::fmask = param.fmask & 07777;
+  Node::dmask = param.dmask & 07777;
+  Node::fmask = param.fmask & 07777;
 
   // No ZIP archive paths.
   if (param.paths.empty()) {
@@ -674,7 +677,7 @@ int main(int argc, char* argv[]) try {
   fuse_opt_add_arg(&args, "use_ino");
 #endif
 
-  if (DataNode::original_permissions) {
+  if (Node::original_permissions) {
     fuse_opt_add_arg(&args, "-o");
     fuse_opt_add_arg(&args, "default_permissions");
   }
