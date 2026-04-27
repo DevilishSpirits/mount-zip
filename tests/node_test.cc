@@ -22,6 +22,10 @@
 
 namespace {
 
+TEST(NodeTest, StaticSize) {
+  EXPECT_LE(sizeof(Node), 256);
+}
+
 TEST(NodeTest, Basic) {
   Node root{};
   root.name = "/";

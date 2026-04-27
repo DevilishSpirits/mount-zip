@@ -512,10 +512,19 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
   for (const auto& [zip, zip_path] : zips_) {
     path = '/';
     if (!opts_.merge) {
-      path += Path(zip_path).Split().second.WithoutExtension();
+      Node::Ptr archive_node(new Node{
+          .parent = root_,
+          .name = std::string(Path(zip_path).Split().second.WithoutExtension()),
+          .mode = S_IFDIR | 0777,
+          .nlink = 2});
+      Node* const node = RenameIfCollision(std::move(archive_node));
+      root_->AddChild(node);
+      root_->nlink++;
+      path += node->name;
     }
 
-    const std::string archive_prefix = path;
+    assert(path.capacity() >= PATH_MAX);
+
     size_t const initial_path_length = path.size();
 
     assert(hard_links.empty());

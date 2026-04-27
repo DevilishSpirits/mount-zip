@@ -1580,6 +1580,58 @@ def TestMultiple():
         options=['-o', 'nomerge'],
     )
 
+    want_tree = {
+        '.': {'ino': 1, 'mode': 'drwxr-xr-x', 'nlink': 4},
+        'empty': {'ino': 2, 'mode': 'drwxr-xr-x', 'nlink': 2},
+        'empty (1)': {'ino': 3, 'mode': 'drwxr-xr-x', 'nlink': 2},
+    }
+
+    MountArchiveAndCheckTree(
+        ['empty.zip', 'empty.zip'],
+        want_tree,
+        options=['-o', 'nomerge'],
+    )
+
+    want_tree = {
+        '.': {'ino': 1, 'mode': 'drwxr-xr-x', 'nlink': 4},
+        'hlink-relative': {'ino': 2, 'mode': 'drwxr-xr-x', 'nlink': 2},
+        'hlink-relative/0regular': {
+            'ino': 3,
+            'mode': '-rw-r--r--',
+            'nlink': 2,
+            'size': 10,
+            'md5': 'e09c80c42fda55f9d992e59ca6b3307d',
+        },
+        'hlink-relative/hlink': {
+            'ino': 3,
+            'mode': '-rw-r--r--',
+            'nlink': 2,
+            'size': 10,
+            'md5': 'e09c80c42fda55f9d992e59ca6b3307d',
+        },
+        'hlink-relative (1)': {'ino': 5, 'mode': 'drwxr-xr-x', 'nlink': 2},
+        'hlink-relative (1)/0regular': {
+            'ino': 6,
+            'mode': '-rw-r--r--',
+            'nlink': 2,
+            'size': 10,
+            'md5': 'e09c80c42fda55f9d992e59ca6b3307d',
+        },
+        'hlink-relative (1)/hlink': {
+            'ino': 6,
+            'mode': '-rw-r--r--',
+            'nlink': 2,
+            'size': 10,
+            'md5': 'e09c80c42fda55f9d992e59ca6b3307d',
+        },
+    }
+
+    MountArchiveAndCheckTree(
+        ['hlink-relative.zip', 'hlink-relative.zip'],
+        want_tree,
+        options=['-o', 'nomerge'],
+    )
+
 
 # Tests -o dmask, fmask and default_permissions.
 def TestMasks():
