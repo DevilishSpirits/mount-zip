@@ -61,6 +61,12 @@ $ make
 $ DEBUG=1 make
 ```
 
+### With AddressSanitizer
+
+```sh
+$ ASAN=1 make
+```
+
 ### With FUSE 2
 
 ```sh
