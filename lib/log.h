@@ -18,12 +18,16 @@
 
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
 
 #include <syslog.h>
+
+// Type aliases for shorter code.
+using i64 = std::int64_t;
 
 template <typename... Args>
 std::string StrCat(Args&&... args) {

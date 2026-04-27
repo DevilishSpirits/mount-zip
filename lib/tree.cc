@@ -581,7 +581,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
       parent->AddChild(node);
       files_by_original_path_[original_path.WithoutTrailingSeparator()] = node;
       total_block_count_ += 1;
-      total_block_count_ += node->operator Node::Stat().st_blocks;
+      total_block_count_ += node->GetStat().st_blocks;
 
       if (is_hard_link) {
         hard_links.push_back(node);

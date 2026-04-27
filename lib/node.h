@@ -69,6 +69,9 @@ inline void SetFileType(mode_t* const mode, const FileType type) {
 
 std::ostream& operator<<(std::ostream& out, FileType t);
 
+// Type aliases for shorter code.
+using Stat = struct stat;
+
 // Represents a named file or directory entry in the filesystem tree.
 struct Node {
   // Nodes are dynamically allocated and passed around by unique_ptr when
@@ -167,13 +170,15 @@ struct Node {
   static const blksize_t block_size = 512;
 
   // Methods.
+  bool IsRoot() const { return !parent; }
+
   const Node& GetTarget() const {
     return hardlink_target ? *hardlink_target : *this;
   }
+
   Node& GetTarget() { return hardlink_target ? *hardlink_target : *this; }
 
-  using Stat = struct stat;
-  operator Stat() const;
+  Stat GetStat() const;
 
   FileType GetType() const { return GetFileType(GetTarget().mode); }
   bool IsDir() const { return GetType() == FileType::Directory; }

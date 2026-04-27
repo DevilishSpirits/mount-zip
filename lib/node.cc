@@ -155,7 +155,7 @@ void Node::Init(Node& node, zip_t* const zip, const i64 id, const mode_t mode) {
   }
 }
 
-Node::operator Stat() const {
+Stat Node::GetStat() const {
   Stat st = {};
   const Node& t = GetTarget();
   st.st_ino = t.ino;

@@ -55,6 +55,7 @@
 #include <limits.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/syslog.h>
 #include <sys/types.h>
 #include <syslog.h>
@@ -177,10 +178,10 @@ struct Operations : fuse_operations {
 
   static int GetAttr(const char* const path,
 #if FUSE_USE_VERSION >= 30
-                     struct stat* const z,
+                     Stat* const z,
                      fuse_file_info* const fi) {
 #else
-                     struct stat* const z) {
+                     Stat* const z) {
     fuse_file_info* const fi = nullptr;
 #endif
 
@@ -200,7 +201,7 @@ struct Operations : fuse_operations {
       }
     }
 
-    *z = *n;
+    *z = n->GetStat();
     return 0;
   }
 
@@ -232,7 +233,7 @@ struct Operations : fuse_operations {
                      off_t,
 #if FUSE_USE_VERSION >= 30
                      fuse_file_info* const fi,
-                     enum fuse_readdir_flags const flags) try {
+                     fuse_readdir_flags const flags) try {
 #else
                      fuse_file_info* const fi) try {
 #endif
@@ -245,14 +246,14 @@ struct Operations : fuse_operations {
 #if FUSE_USE_VERSION >= 30
     const bool plus = (flags & FUSE_READDIR_PLUS) != 0;
 #else
-    const bool plus = false;
+    const bool plus = true;
 #endif
 
     const auto add = [buf, filler, n, plus](const char* const name,
-                                            const struct stat* const st) {
+                                            const Stat* const st) {
 #if FUSE_USE_VERSION >= 30
-      const enum fuse_fill_dir_flags flags =
-          plus ? FUSE_FILL_DIR_PLUS : static_cast<enum fuse_fill_dir_flags>(0);
+      const fuse_fill_dir_flags flags =
+          plus ? FUSE_FILL_DIR_PLUS : fuse_fill_dir_flags(0);
       if (filler(buf, name, st, 0, flags)) {
 #else
       if (filler(buf, name, st, 0)) {
@@ -263,28 +264,17 @@ struct Operations : fuse_operations {
       }
     };
 
+    Stat z;
+    auto const f = [&z, plus](const Node& n) {
+      return plus ? &(z = n.GetStat()) : nullptr;
+    };
+
     Timer const timer;
-    struct stat z;
-
-    if (plus) {
-      z = *n;
-    }
-    add(".", plus ? &z : nullptr);
-
-    if (const Node* const parent = n->parent) {
-      if (plus) {
-        z = *parent;
-      }
-      add("..", plus ? &z : nullptr);
-    } else {
-      add("..", nullptr);
-    }
+    add(".", f(*n));
+    add("..", n->IsRoot() ? nullptr : f(*n->parent));
 
     for (const Node& child : n->children) {
-      if (plus) {
-        z = child;
-      }
-      add(child.name.c_str(), plus ? &z : nullptr);
+      add(child.name.c_str(), f(child));
     }
 
     LOG(DEBUG) << "List " << *n << " -> " << n->children.size() << " items in "
@@ -392,7 +382,10 @@ struct Operations : fuse_operations {
       return ToError("read link", *n);
     }
   }
-  static int StatFs(const char*, struct statvfs* const z) {
+
+  using StatVfs = struct statvfs;
+
+  static int StatFs(const char*, StatVfs* const z) {
     assert(z);
     assert(g_tree);
     z->f_bsize = Tree::block_size;
