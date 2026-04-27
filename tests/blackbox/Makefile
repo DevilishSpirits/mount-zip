@@ -17,7 +17,7 @@
 
 all: check
 
-check: data/big.zip data/collisions.zip data/deep.zip
+check: data/big.zip data/collisions.zip data/deep.zip data/many_nodes.zip
 	python3 test.py
 
 check-fast:
@@ -31,6 +31,9 @@ data/collisions.zip: make_collisions.py
 
 data/deep.zip: make_deep.py
 	python3 make_deep.py
+
+data/many_nodes.zip: make_many_nodes.py
+	python3 make_many_nodes.py
 
 rebuild:
 	make -C ../../lib all

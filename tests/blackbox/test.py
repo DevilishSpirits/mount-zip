@@ -1913,6 +1913,47 @@ def TestBigZip(options=[]):
       logging.debug(f'Unmounted {zip_path!r} from {mount_point!r}')
 
 
+# Tests that an archive with many nodes and deep hierarchies can be mounted.
+def TestManyNodes():
+  zip_name = 'many_nodes.zip'
+  logging.info(f'Test {zip_name!r}')
+  with tempfile.TemporaryDirectory() as mount_point:
+    zip_path = os.path.join(script_dir, 'data', zip_name)
+    logging.debug(f'Mounting {zip_path!r} on {mount_point!r}...')
+    subprocess.run(
+        [mount_program, '--', zip_path, mount_point],
+        check=True,
+        capture_output=True,
+        input='',
+        encoding='UTF-8',
+    )
+    try:
+      logging.debug(f'Mounted ZIP {zip_path!r} on {mount_point!r}')
+
+      # Check a few files.
+      for i, j in [(0, 0), (50, 50), (99, 99)]:
+        path = os.path.join(mount_point, '%02d' % i, '%02d' % j, *(['x'] * 2000))
+        want_content = b'File %02d/%02d\n' % (i, j)
+        with open(path, 'rb') as f:
+          got_content = f.read()
+          if got_content != want_content:
+            LogError(f'Want content: {want_content!r}, Got content: {got_content!r}')
+
+      st = os.statvfs(mount_point)
+      # total nodes = 1 (root) + 100 (i) + 100*100 (j) + 10,000 * 1999 (x dirs) + 10,000 (files)
+      # = 1 + 100 + 10,000 + 19,990,000 + 10,000 = 20,010,101
+      want_inodes = 20010101
+      if st.f_files != want_inodes:
+        LogError(
+            f'Mismatch for st.f_files: got: {st.f_files}, want: {want_inodes}'
+        )
+
+    finally:
+      logging.debug(f'Unmounting {zip_path!r} from {mount_point!r}...')
+      subprocess.run(['umount', '-l', mount_point], check=True)
+      logging.debug(f'Unmounted {zip_path!r} from {mount_point!r}')
+
+
 # Tests that a big file can be accessed in somewhat random order even with no
 # cache file.
 def TestBigZipNoCache(options=['-o', 'nocache']):
@@ -2675,6 +2716,7 @@ if '--fast' not in sys.argv:
   TestBigZip()
   TestBigZip(options=['-o', 'precache'])
   TestBigZipNoCache()
+  TestManyNodes()
 
 if error_count:
   LogError(f'FAIL: There were {error_count} errors')
