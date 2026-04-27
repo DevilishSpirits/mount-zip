@@ -855,7 +855,7 @@ void Tree::CreateHardLink(Node* const node) {
   Node* const target = it->second;
   assert(target);
 
-  if (&node->GetTarget() == &target->GetTarget()) {
+  if (node->GetTarget() == target->GetTarget()) {
     LOG(ERROR) << "Self-referencial hard link " << *node << " -> " << *target;
     return;
   }
@@ -870,7 +870,7 @@ void Tree::CreateHardLink(Node* const node) {
     return;
   }
 
-  node->hardlink_target = &target->GetTarget();
+  node->hardlink_target = target->GetTarget();
   node->hardlink_target->nlink++;
 
   LOG(DEBUG) << "Created hard link " << *node << " -> " << *target;

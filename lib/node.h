@@ -172,15 +172,12 @@ struct Node {
   // Methods.
   bool IsRoot() const { return !parent; }
 
-  const Node& GetTarget() const {
-    return hardlink_target ? *hardlink_target : *this;
-  }
-
-  Node& GetTarget() { return hardlink_target ? *hardlink_target : *this; }
+  const Node* GetTarget() const { return hardlink_target ? hardlink_target : this; }
+  Node* GetTarget() { return hardlink_target ? hardlink_target : this; }
 
   Stat GetStat() const;
 
-  FileType GetType() const { return GetFileType(GetTarget().mode); }
+  FileType GetType() const { return GetFileType(GetTarget()->mode); }
   bool IsDir() const { return GetType() == FileType::Directory; }
 
   // Gets the full absolute path of this node.

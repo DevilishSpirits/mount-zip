@@ -157,29 +157,29 @@ void Node::Init(Node& node, zip_t* const zip, const i64 id, const mode_t mode) {
 
 Stat Node::GetStat() const {
   Stat st = {};
-  const Node& t = GetTarget();
-  st.st_ino = t.ino;
-  st.st_nlink = t.nlink;
+  const Node* const t = GetTarget();
+  st.st_ino = t->ino;
+  st.st_nlink = t->nlink;
   st.st_blksize = block_size;
-  st.st_blocks = (t.size + block_size - 1) / block_size;
-  st.st_size = t.size;
-  st.st_rdev = t.dev;
+  st.st_blocks = (t->size + block_size - 1) / block_size;
+  st.st_size = t->size;
+  st.st_rdev = t->dev;
 
 #if __APPLE__
-  st.st_atimespec = t.atime;
-  st.st_mtimespec = t.mtime;
-  st.st_ctimespec = t.ctime;
+  st.st_atimespec = t->atime;
+  st.st_mtimespec = t->mtime;
+  st.st_ctimespec = t->ctime;
 #else
-  st.st_atim = t.atime;
-  st.st_mtim = t.mtime;
-  st.st_ctim = t.ctime;
+  st.st_atim = t->atime;
+  st.st_mtim = t->mtime;
+  st.st_ctim = t->ctime;
 #endif
 
   if (original_permissions) {
-    st.st_uid = t.uid;
-    st.st_gid = t.gid;
-    st.st_mode = t.mode;
-    switch (GetFileType(t.mode)) {
+    st.st_uid = t->uid;
+    st.st_gid = t->gid;
+    st.st_mode = t->mode;
+    switch (GetFileType(t->mode)) {
       case FileType::Directory:
         st.st_mode &= ~dmask;
         break;
@@ -193,7 +193,7 @@ Stat Node::GetStat() const {
   } else {
     st.st_uid = g_uid;
     st.st_gid = g_gid;
-    const FileType ft = GetFileType(t.mode);
+    const FileType ft = GetFileType(t->mode);
     switch (ft) {
       case FileType::Directory:
         st.st_mode = static_cast<mode_t>(S_IFDIR | (0777 & ~dmask));
@@ -205,7 +205,7 @@ Stat Node::GetStat() const {
 
       default:
         st.st_mode = 0666;
-        if (const mode_t xbits = 0111; (t.mode & xbits) != 0) {
+        if (const mode_t xbits = 0111; (t->mode & xbits) != 0) {
           st.st_mode |= xbits;
         }
         st.st_mode &= ~fmask;
@@ -317,14 +317,14 @@ Node* Node::GetUniqueChildDirectory() {
 }
 
 bool Node::CacheAll(std::function<void(ssize_t)> progress) {
-  const Node& t = GetTarget();
-  assert(!t.cached_reader);
-  if (t.size == 0) {
+  const Node* const t = GetTarget();
+  assert(!t->cached_reader);
+  if (t->size == 0) {
     LOG(DEBUG) << "No need to cache " << *this << ": Empty file";
     return false;
   }
 
-  ZipFile file = Reader::Open(t.zip, t.id);
+  ZipFile file = Reader::Open(t->zip, t->id);
   assert(file);
 
 #if LIBZIP_VERSION_MAJOR > 1 ||      \
@@ -336,7 +336,7 @@ bool Node::CacheAll(std::function<void(ssize_t)> progress) {
 #else
   // For libzip < 1.9.1
   zip_stat_t st;
-  const bool seekable = zip_stat_index(t.zip, t.id, 0, &st) == 0 &&
+  const bool seekable = zip_stat_index(t->zip, t->id, 0, &st) == 0 &&
                         (st.valid & ZIP_STAT_COMP_METHOD) != 0 &&
                         st.comp_method == ZIP_CM_STORE &&
                         (st.valid & ZIP_STAT_ENCRYPTION_METHOD) != 0 &&
@@ -348,24 +348,24 @@ bool Node::CacheAll(std::function<void(ssize_t)> progress) {
     return false;
   }
 
-  t.cached_reader =
-      CacheFile(std::move(file), t.id, t.size, std::move(progress));
+  t->cached_reader =
+      CacheFile(std::move(file), t->id, t->size, std::move(progress));
   return true;
 }
 
 Reader::Ptr Node::GetReader() const {
-  const Node& t = GetTarget();
-  if (t.cached_reader) {
-    LOG(DEBUG) << *t.cached_reader << ": Reusing Cached " << *t.cached_reader
+  const Node* const t = GetTarget();
+  if (t->cached_reader) {
+    LOG(DEBUG) << *t->cached_reader << ": Reusing Cached " << *t->cached_reader
                << " for " << *this;
-    return t.cached_reader->AddRef();
+    return t->cached_reader->AddRef();
   }
 
-  if (!t.target.empty()) {
-    return Reader::Ptr(new StringReader(t.target));
+  if (!t->target.empty()) {
+    return Reader::Ptr(new StringReader(t->target));
   }
 
-  ZipFile file = Reader::Open(t.zip, t.id);
+  ZipFile file = Reader::Open(t->zip, t->id);
   assert(file);
 
 #if LIBZIP_VERSION_MAJOR > 1 ||      \
@@ -377,7 +377,7 @@ Reader::Ptr Node::GetReader() const {
 #else
   // For libzip < 1.9.1
   zip_stat_t st;
-  const bool seekable = zip_stat_index(t.zip, t.id, 0, &st) == 0 &&
+  const bool seekable = zip_stat_index(t->zip, t->id, 0, &st) == 0 &&
                         (st.valid & ZIP_STAT_COMP_METHOD) != 0 &&
                         st.comp_method == ZIP_CM_STORE &&
                         (st.valid & ZIP_STAT_ENCRYPTION_METHOD) != 0 &&
@@ -385,9 +385,9 @@ Reader::Ptr Node::GetReader() const {
 #endif
 
   Reader::Ptr reader(seekable
-                         ? new UnbufferedReader(std::move(file), t.id, t.size)
-                         : new BufferedReader(t.zip, std::move(file), t.id,
-                                              t.size, &t.cached_reader));
+                         ? new UnbufferedReader(std::move(file), t->id, t->size)
+                         : new BufferedReader(t->zip, std::move(file), t->id,
+                                              t->size, &t->cached_reader));
 
   LOG(DEBUG) << *reader << ": Opened " << *this << ", seekable = " << seekable;
   return reader;
