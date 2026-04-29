@@ -108,7 +108,7 @@ working directory.
 **-d**
 :   Foreground mode with debug output.
 
-# USAGE
+# USAGE EXAMPLES
 
 Mount a ZIP archive:
 
@@ -164,7 +164,7 @@ $ umount mnt
     *   7855 Info-ZIP Unix extra fields (type 2)
     *   7875 Info-ZIP Unix extra fields (type 3): UID and GID
 
-## File Name Encoding
+# FILE NAME ENCODING
 
 **mount-zip** is fully Unicode compliant. It converts the file names stored in
 the ZIP archive from their original encoding to UTF-8.
@@ -229,7 +229,7 @@ mnt
 0 directories, 2 files
 ```
 
-## Name Deduplication
+# NAME DEDUPLICATION
 
 In case of name collision, **mount-zip** adds a number to deduplicate the
 conflicting file name:
@@ -268,7 +268,7 @@ mnt
 Directories are never renamed. If a file is colliding with a directory, the file
 will be the one getting renamed.
 
-## Encrypted Archives
+# ENCRYPTED ARCHIVES
 
 **mount-zip** supports encrypted ZIP archives. It understands the legacy ZIP
 encryption scheme, as well as the more recent AES encryption schemes (AES-128,
@@ -381,6 +381,8 @@ Need password for File [1] '/Encrypted AES-128.txt'
 Password is Ok
 ```
 
+# FILE TYPES
+
 ## Symbolic links
 
 **mount-zip** shows symbolic links recorded in the ZIP archive:
@@ -436,27 +438,7 @@ srw------- 1 1000 1000    0 Aug  3  2019 z-hardlink-socket
 lrwxrwxrwx 1 1000 1000    7 Aug  3  2019 z-hardlink-symlink -> regular
 ```
 
-Special files can be suppressed with the `-o nospecials` option:
-
-```
-$ mount-zip -o default_permissions -o nospecials pkware-specials.zip mnt
-Skipped Block Device [0] '/block'
-Skipped Character Device [1] '/char'
-Skipped Pipe [2] '/fifo'
-Skipped Socket [4] '/socket'
-Skipped Block Device [7] '/z-hardlink-block'
-Skipped Character Device [8] '/z-hardlink-char'
-Skipped Pipe [9] '/z-hardlink-fifo'
-Skipped Socket [10] '/z-hardlink-socket'
-
-$ ls -n mnt
--rw-r--r-- 3 1000 1000 32 Aug  9  2019 regular
-lrwxrwxrwx 1 1000 1000  7 Aug  3  2019 symlink -> regular
-lrwxrwxrwx 1 1000 1000  7 Aug 25  2019 symlink2 -> regular
--rw-r--r-- 3 1000 1000 32 Aug  9  2019 z-hardlink1
--rw-r--r-- 3 1000 1000 32 Aug  9  2019 z-hardlink2
-lrwxrwxrwx 1 1000 1000  7 Aug  3  2019 z-hardlink-symlink -> regular
-```
+Special files can be suppressed with the `-o nospecials` option.
 
 ## Hard Links
 
@@ -489,124 +471,92 @@ $ du -b mnt
 10      mnt
 ```
 
-Duplicated hard links can be suppressed with the `-o nohardlinks` option:
+Duplicated hard links can be suppressed with the `-o nohardlinks` option.
 
-```
-$ mount-zip -o nohardlinks hlink-chain.zip mnt
-mount-zip: Skipped File [1] '/hlink1'
-mount-zip: Skipped File [2] '/hlink2'
-
-$ ls -ni mnt
-2 -rw-r--r-- 1 0 0 10 Aug 14  2019 0regular
-```
-
-## File Permissions
-
-**mount-zip** can show the Unix file permissions and ownership (UIDs and GIDs)
-as recorded in the ZIP archive when used with `-o default_permissions`:
-
-```
-$ mount-zip -o default_permissions unix-perm.zip mnt
-
-$ ls -n mnt
--rw-r----- 1 1000 1000 0 Jan  5  2014 640
--rw-r---w- 1 1000 1000 0 Jan  5  2014 642
--rw-rw-rw- 1 1000 1000 0 Jan  5  2014 666
--rwsrwsr-x 1 1000 1000 0 Jan  5  2014 6775
--rwxrwxrwx 1 1000 1000 0 Jan  5  2014 777
-
-$ md5sum mnt/*
-md5sum: mnt/640: Permission denied
-md5sum: mnt/642: Permission denied
-d41d8cd98f00b204e9800998ecf8427e  mnt/666
-d41d8cd98f00b204e9800998ecf8427e  mnt/6775
-d41d8cd98f00b204e9800998ecf8427e  mnt/777
-```
-
-## Smart Caching
+# CACHING
 
 **mount-zip** only does the minimum amount of work required to serve the
-requested data. When reading a compressed file, **mount-zip** only decompresses
-enough data to serve the reading application. This is called *lazy* or
-*on-the-go* decompression.
+requested data. It offers several caching strategies and storage options to
+balance performance, mount time, and resource usage.
 
-Accessing the beginning of a big compressed file is therefore instantaneous:
+## Caching Strategies
 
-```
-$ mount-zip 'Big One.zip' mnt
+The following strategies are mutually exclusive. If none is specified, lazy
+decompression is used by default.
 
-$ ls -lh mnt/
--rw-rw-r-- 1 root root 6.4G Mar 26  2020 'Big One.txt'
+### Lazy Decompression (Default)
 
-$ time head -4 'mnt/Big One.txt'
-We're going on a bear hunt.
-We're going to catch a big one.
-What a beautiful day!
-We're not scared.
+By default, **mount-zip** only decompresses enough data to serve the reading
+application. Accessing the beginning of a big compressed file is therefore
+instantaneous. **mount-zip** will start caching a file if it detects that this
+file is getting read in a non-sequential way.
 
-real    0m0.030s
-user    0m0.015s
-sys     0m0.014s
-```
+### Pre-emptive Caching (`-o precache`)
 
-**mount-zip** generally avoids caching decompressed data. If you read a
-compressed file several times, it is getting decompressed each time:
+The `-o precache` option instructs **mount-zip** to preemptively decompress and
+cache the whole ZIP archive(s) at mount time. The cost of decompression is
+incurred upfront, ensuring that any subsequent access to the served data is fast
+and supports efficient random access.
 
-```
-$ dd if='mnt/Big One.txt' of=/dev/null status=progress
-6777995272 bytes (6.8 GB, 6.3 GiB) copied, 24.9395 s, 272 MB/s
+### No Caching (`-o nocache`)
 
-$ dd if='mnt/Big One.txt' of=/dev/null status=progress
-6777995272 bytes (6.8 GB, 6.3 GiB) copied, 24.961 s, 272 MB/s
-```
+The `-o nocache` option disables long-term caching. **mount-zip** will use a
+small rolling buffer in memory to serve data. This minimizes disk and memory
+usage but can be significantly slower for non-sequential access patterns or if
+the same files are read repeatedly, as data may need to be re-decompressed.
 
-But **mount-zip** will start caching a file if it detects that this file is
-getting read in a non-sequential way (i.e., the reading application starts
-jumping to different positions of the file).
+## Storage Options
 
-For example, `tail` jumps to the end of the file. The first time this happens,
-**mount-zip** decompresses the whole file and caches the decompressed data (in
-about 13 seconds in this instance):
+### Disk Caching (Default)
 
-```
-$ time tail -1 'mnt/Big One.txt'
-The End
+By default, decompressed data is cached in an anonymous temporary file (in
+`$TMPDIR` or `/tmp`). This cache can use a significant amount of disk space but
+is automatically deleted when the ZIP is unmounted. The cache directory can be
+changed with the `-o cache=DIR` option.
 
-real    0m12.631s
-user    0m0.024s
-sys     0m0.656s
-```
+### Memory Caching (`-o memcache`)
 
-A subsequent call to `tail` is instantaneous, because **mount-zip** has now
-cached the decompressed data:
+The `-o memcache` option instructs **mount-zip** to store the cache in RAM
+instead of a temporary file. This provides the highest performance but can
+consume a large amount of memory. It can be used with both lazy and pre-emptive
+caching strategies.
 
-```
-$ time tail -1 'mnt/Big One.txt'
-The End
+# ADVANCED OPTIONS
 
-real    0m0.032s
-user    0m0.018s
-sys     0m0.018s
-```
+## Handling Errors (`-o force`)
 
-Decompressed data is cached in a temporary file located in the cache directory
-(`$TMPDIR` or `/tmp` by default). The cache directory can be changed with the
-`-o cache=DIR` option. The cache file is only created if necessary, and
-automatically deleted when the ZIP is unmounted.
+The `-o force` option allows **mount-zip** to continue mounting a ZIP archive
+even if some errors are encountered. This includes:
 
-Alternatively, the `-o memcache` option caches the decompressed data in memory.
-Be cautious with this option since it can cause **mount-zip** to use a lot of
-memory.
+*   Wrong or missing decryption passwords.
+*   Unsupported compression or encryption methods.
 
-You can preemptively cache data at mount time by using the `-o precache` option.
-The cost of decompression is incurred upfront, and this ensures that any
-subsequent access to the served data is fast.
+In these cases, files that cannot be correctly processed will still be listed in
+the directory tree, but attempting to read them will result in an Input/Output
+error (EIO).
 
-If **mount-zip** cannot create and expand the cache file, or if it was passed
-the `-o nocache` option, it will do its best by using a small rolling buffer in
-memory. However, some data access patterns might then result in poor
-performance, especially if **mount-zip** has to repeatedly extract the same
-file.
+## Permissions and Ownership
+
+By default, **mount-zip** presents all files as being owned by the current user
+and group, with standard read permissions.
+
+### User and Group IDs (`-o uid=N`, `-o gid=N`)
+
+You can explicitly set the user and group of all items in the mounted archive
+using the `-o uid` and `-o gid` options with the desired numerical IDs.
+
+### Using Archive Permissions (`-o default_permissions`)
+
+The `-o default_permissions` option instructs **mount-zip** to use the exact
+UID, GID, and Unix permission bits stored within the archive for each item. This
+includes support for special bits such as **SUID**, **SGID**, and **SVTX**
+(sticky bit).
+
+### Permission Masks (`-o dmask=M`, `-o fmask=M`)
+
+You can apply an octal permission mask to directories (`dmask`) and files
+(`fmask`). For example, `-o fmask=077` would remove all permissions for group
+and others from files.
 
 # PERFORMANCE
 
@@ -807,30 +757,24 @@ developed by [François Degros](https://github.com/fdegros). The ability to writ
 and modify ZIP archives has been removed, but a number of optimizations and
 features have been added:
 
-Feature                       | mount-zip | fuse-zip
-:---------------------------- | :-------: | :------:
-Read-Write Mode               | ❌         | ✅
-Read-Only Mode                | ✅         | ✅
-Shows Symbolic Links          | ✅         | ✅
-Shows Hard Links              | ✅         | ✅
-Shows Special Files           | ✅         | ✅
-Shows Precise Timestamps      | ✅         | ✅
-Random Access                 | ✅         | ✅
-Can Cache Data in Memory      | ✅         | ✅
-Can Cache Data in Temp File   | ✅         | ❌
-Smart Caching                 | ✅         | ❌
-Decompresses Data Lazily      | ✅         | ❌
-Handles Huge Files            | ✅         | ❌
-Handles Encrypted Files       | ✅         | ❌
-Handles Name Collisions       | ✅         | ❌
-Detects Name Encoding         | ✅         | ❌
-Can mount several ZIPs        | ✅         | ❌
-Can Hide Symlinks             | ✅         | ❌
-Can Hide Hard Links           | ✅         | ❌
-Can Hide Special Files        | ✅         | ❌
-Can Redact Log Messages       | ✅         | ❌
-Can Use FUSE 3                | ✅         | ❌
-Returns Distinct Error Codes  | ✅         | ❌
+Feature                       | **mount-zip** | **fuse-archive** | **fuse-zip**
+:---------------------------- | :-----------: | :--------------: | :---------:
+Read-Write Mode               | ❌             | ❌                | ✅
+Read-Only Mode                | ✅             | ✅                | ✅
+Format Support            | ZIP           | Wide             | ZIP
+GPG Encryption            | ❌             | ✅                | ❌
+Native ZIP Encryption     | ✅             | ✅                | ✅
+Lazy Decompression        | ✅             | ✅                | ❌
+Default Caching           | Lazy          | Pre-emptive      | N/A
+Memory Caching            | ✅             | ✅                | ✅
+Temp File Caching         | ✅             | ✅                | ❌
+Handles Huge Files        | ✅             | ✅                | ❌
+Sparse File Detection     | ❌             | ✅                | ❌
+Precision Timestamps      | ✅             | ✅                | ✅
+Several Archives          | ✅             | ✅                | ❌
+Automatic Mount Point     | ✅             | ✅                | ❌
+FUSE 3 Support            | ✅             | ✅                | ❌
+Distinct Error Codes      | ✅             | ✅                | ❌
 
 # AUTHORS
 
