@@ -23,6 +23,22 @@
 
 #include "log.h"
 
+namespace {
+
+// Converts a string to ASCII lower case.
+std::string ToLower(std::string_view const s) {
+  std::string r(s);
+  for (char& c : r) {
+    if ('A' <= c && c <= 'Z') {
+      c += 'a' - 'A';
+    }
+  }
+
+  return r;
+}
+
+}  // namespace
+
 bool Path::redact = false;
 
 std::ostream& operator<<(std::ostream& out, const Path path) {
@@ -67,7 +83,7 @@ Path Path::WithoutTrailingSeparator() const {
 Path::size_type Path::FinalExtensionPosition() const {
   const size_type last_dot = find_last_of("/. ");
   if (last_dot == npos || at(last_dot) != '.' || last_dot == 0 ||
-      last_dot == size() - 1 || size() - last_dot > 6) {
+      last_dot == size() - 1 || size() - last_dot > 8) {
     return size();
   }
 
@@ -87,17 +103,16 @@ Path::size_type Path::ExtensionPosition() const {
 
   // Extract extension without dot and in ASCII lowercase.
   assert(at(last_dot) == '.');
-  std::string ext(substr(last_dot + 1));
-  for (char& c : ext) {
-    if ('A' <= c && c <= 'Z') {
-      c += 'a' - 'A';
-    }
-  }
+  const std::string ext = ToLower(substr(last_dot + 1));
 
   // Is it a special extension?
   static const std::unordered_set<std::string_view> special_exts = {
-      "z", "gz", "bz", "bz2", "xz", "zst", "lz", "lzma"};
-  if (special_exts.count(ext)) {
+      "asc",   "b64", "base64", "br",    "brotli", "bz",   "bz2",
+      "bzip2", "gpg", "grz",    "grzip", "gz",     "gzip", "lrz",
+      "lrzip", "lz",  "lzip",   "lz4",   "lzma",   "lzo",  "lzop",
+      "pgp",   "uu",  "xz",     "z",     "zst",    "zstd"};
+
+  if (special_exts.contains(ext)) {
     return Path(substr(0, last_dot)).FinalExtensionPosition();
   }
 

@@ -58,7 +58,9 @@ enum class FileType : mode_t {
 };
 
 inline FileType GetFileType(const mode_t mode) {
-  return FileType(mode & S_IFMT);
+  // Consider an unknown file type as a regular file.
+  mode_t const ft = mode & S_IFMT;
+  return ft ? FileType(ft) : FileType::File;
 }
 
 inline void SetFileType(mode_t* const mode, const FileType type) {
