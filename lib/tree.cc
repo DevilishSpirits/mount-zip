@@ -46,6 +46,21 @@
 #include "file_descriptor.h"
 #include "log.h"
 
+namespace {
+
+i64 SafeAdd(i64 const a, i64 const b) {
+  i64 r;
+  if (__builtin_add_overflow(a, b, &r)) {
+    std::string msg = StrCat("Integer overflow with ", a, " + ", b);
+    LOG(ERROR) << msg;
+    throw std::overflow_error(std::move(msg));
+  }
+
+  return r;
+}
+
+}  // namespace
+
 enum CompressionMethod : int;
 
 std::ostream& operator<<(std::ostream& out, const CompressionMethod cm) {
@@ -432,7 +447,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
       }
 
       if ((sb.valid & ZIP_STAT_SIZE) != 0) {
-        total_uncompressed_size += sb.size;
+        total_uncompressed_size = SafeAdd(total_uncompressed_size, sb.size);
       }
 
       if ((sb.valid & ZIP_STAT_NAME) == 0 || !sb.name || !*sb.name) {
@@ -491,7 +506,7 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
   const auto progress = [&should_display_progress, &total_uncompressed_size,
                          &total_extracted_size](const ssize_t chunk_size) {
     assert(chunk_size >= 0);
-    total_extracted_size += chunk_size;
+    total_extracted_size = SafeAdd(total_extracted_size, chunk_size);
     if (should_display_progress) {
       LOG(INFO) << "Loading... "
                 << ProgressMessage(total_extracted_size <
