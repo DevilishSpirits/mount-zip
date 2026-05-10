@@ -40,7 +40,8 @@ UNIT_TEST_PKG_CXXFLAGS := $(shell $(PKG_CONFIG) --cflags $(UNIT_TEST_DEPS) 2>/de
 UNIT_TEST_PKG_LDFLAGS := $(shell $(PKG_CONFIG) --libs $(UNIT_TEST_DEPS) 2>/dev/null)
 endif
 
-COMMON_CXXFLAGS = -std=c++20 -Wall -Wextra -Wno-nullability-extension \
+STD_CXXFLAGS = -std=c++23
+COMMON_CXXFLAGS = $(STD_CXXFLAGS) -Wall -Wextra -Wno-nullability-extension \
                    -Wno-sign-compare -Wno-missing-field-initializers \
                    -pedantic -I. -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64 $(FUSE_CXXFLAGS)
 

@@ -26,7 +26,7 @@ $ sudo apt install libfuse-dev
 
 To build **mount-zip**, you also need the following tools:
 
-*   C++20 compiler (g++ or clang++)
+*   C++23 compiler (g++ 13+ or clang++ 16+)
 *   [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/)
 *   [GNU make](https://www.gnu.org/software/make/)
 *   [GoogleTest](https://github.com/google/googletest) (for unit tests)
