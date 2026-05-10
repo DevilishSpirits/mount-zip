@@ -1998,6 +1998,11 @@ def TestBigZipNoCache(options=['-o', 'nocache']):
       logging.debug(f'Unmounted {zip_path!r} from {mount_point!r}')
 
 
+# Tests that a big file can be accessed in random order with memory cache.
+def TestBigZipMemCache():
+  TestBigZip(options=['-o', 'memcache'])
+
+
 # Tests encrypted ZIP.
 def TestEncryptedZip():
   zip_name = 'different-encryptions.zip'
@@ -2716,6 +2721,7 @@ if '--fast' not in sys.argv:
   TestBigZip()
   TestBigZip(options=['-o', 'precache'])
   TestBigZipNoCache()
+  TestBigZipMemCache()
   TestManyNodes()
 
 if error_count:

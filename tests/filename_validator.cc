@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include <string>
 
+#include "log.h"
 #include "path.h"
 
 namespace {
@@ -61,6 +62,38 @@ TEST(FilenameValidator, Normalized) {
   checkConversion("///rootname", "/rootname");
   checkConversion("/path/name", "/path/name");
   checkConversion("///path///name", "/path/name");
+}
+
+TEST(PathTest, OutputOperator) {
+  std::ostringstream oss;
+  Path::redact = false;
+  oss << Path("foo/bar.txt");
+  EXPECT_EQ(oss.str(), "'foo/bar.txt'");
+
+  oss.str("");
+  oss << Path("a'b\\c\x01");
+  EXPECT_EQ(oss.str(), "'a\\'b\\\\c\\x01'");
+
+  oss.str("");
+  Path::redact = true;
+  oss << Path("private/data.txt");
+  EXPECT_EQ(oss.str(), "(redacted)");
+  Path::redact = false;
+}
+
+TEST(LogTest, Timer) {
+  Timer timer;
+  EXPECT_GE(timer.Milliseconds(), 0);
+  std::ostringstream oss;
+  oss << timer;
+  EXPECT_TRUE(oss.str().find("ms") != std::string::npos);
+}
+
+TEST(LogTest, Beat) {
+  Beat beat;
+  // Initial state: not time for next beat yet.
+  EXPECT_FALSE(beat);
+  EXPECT_EQ(beat.Count(), 0);
 }
 
 }  // namespace
