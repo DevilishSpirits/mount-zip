@@ -1,6 +1,2 @@
 *~
 out
-tests/blackbox/data/big.zip
-tests/blackbox/data/collisions.zip
-tests/blackbox/data/deep.zip
-tests/blackbox/data/many_nodes.zip

@@ -1,6 +1,0 @@
-# Test suite for black-box testing of mount-zip
-
-You need Python 3.8 to run the test suite:
-
-$ python3 test.py
-

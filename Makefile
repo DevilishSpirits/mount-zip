@@ -1,6 +1,5 @@
 # Copyright 2021 Google LLC
 # Copyright 2008-2021 Alexander Galanin <al@galanin.nnov.ru>
-# http://galanin.nnov.ru/~al
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,83 +14,157 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-PROJECT_NAME = mount-zip
-OUT = out
-ABS_OUT = $(abspath $(OUT))
-DEST = $(OUT)/$(PROJECT_NAME)
+PROJECT = mount-zip
 PKG_CONFIG ?= pkg-config
-
-PREFIX ?= /usr/local
-BINDIR = $(PREFIX)/bin
-MANDIR = $(PREFIX)/share/man/man1
-
-PROJECT_CXXFLAGS = -std=c++20 -Wall -Wextra -Wno-nullability-extension \
-                   -Wno-sign-compare -Wno-missing-field-initializers \
-                   -pedantic -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64
 
 FUSE_MAJOR_VERSION ?= 3
 
 ifeq ($(FUSE_MAJOR_VERSION), 3)
 DEPS = fuse3
-PROJECT_CXXFLAGS += -DFUSE_USE_VERSION=30
+FUSE_CXXFLAGS = -DFUSE_USE_VERSION=30
 else ifeq ($(FUSE_MAJOR_VERSION), 2)
 DEPS = fuse
-PROJECT_CXXFLAGS += -DFUSE_USE_VERSION=26
+FUSE_CXXFLAGS = -DFUSE_USE_VERSION=26
 endif
 
 DEPS += libzip icu-uc icu-i18n
-PROJECT_CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(DEPS))
-PROJECT_LDFLAGS = -L$(OUT) -lmountzip $(shell $(PKG_CONFIG) --libs $(DEPS))
+UNIT_TEST_DEPS = gtest gtest_main
+
+PKG_CXXFLAGS := $(shell $(PKG_CONFIG) --cflags $(DEPS) 2>/dev/null)
+PKG_LDFLAGS := $(shell $(PKG_CONFIG) --libs $(DEPS) 2>/dev/null)
+
+HAS_GTEST := $(shell $(PKG_CONFIG) --exists $(UNIT_TEST_DEPS) 2>/dev/null && echo yes || echo no)
+
+ifeq ($(HAS_GTEST), yes)
+UNIT_TEST_PKG_CXXFLAGS := $(shell $(PKG_CONFIG) --cflags $(UNIT_TEST_DEPS) 2>/dev/null)
+UNIT_TEST_PKG_LDFLAGS := $(shell $(PKG_CONFIG) --libs $(UNIT_TEST_DEPS) 2>/dev/null)
+endif
+
+COMMON_CXXFLAGS = -std=c++20 -Wall -Wextra -Wno-nullability-extension \
+                   -Wno-sign-compare -Wno-missing-field-initializers \
+                   -pedantic -I. -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64 $(FUSE_CXXFLAGS)
 
 ifeq ($(DEBUG), 1)
-PROJECT_CXXFLAGS += -O0 -g
+COMMON_CXXFLAGS += -O0 -g
 else
-PROJECT_CXXFLAGS += -O2 -DNDEBUG
+COMMON_CXXFLAGS += -O2 -DNDEBUG
 endif
 
 ifeq ($(ASAN), 1)
-PROJECT_CXXFLAGS += -fsanitize=address
-PROJECT_LDFLAGS += -fsanitize=address
+COMMON_CXXFLAGS += -fsanitize=address
+PKG_LDFLAGS += -fsanitize=address
 endif
 
 ifeq ($(UBSAN), 1)
-PROJECT_CXXFLAGS += -fsanitize=undefined
-PROJECT_LDFLAGS += -fsanitize=undefined
+COMMON_CXXFLAGS += -fsanitize=undefined
+PKG_LDFLAGS += -fsanitize=undefined
 endif
 
-LIB = $(OUT)/libmountzip.a
-SOURCES = mount-zip.cc
-OBJECTS = $(addprefix $(OUT)/,$(SOURCES:.cc=.o))
-MAN = $(PROJECT_NAME).1
+PREFIX ?= /usr/local
+BINDIR = $(PREFIX)/bin
+MANDIR = $(PREFIX)/share/man/man1
+MAN = $(PROJECT).1
 INSTALL = install
 
-all: $(DEST)
+OUT = out
+
+all: $(OUT)/$(PROJECT)
+
+# ---- Formatting
+
+FORMAT = clang-format
+CC_FILES = $(wildcard *.cc lib/*.cc tests/*.cc utils/*.cpp)
+H_FILES = $(wildcard lib/*.h tests/*.h)
+ALL_CXX_FILES = $(CC_FILES) $(H_FILES)
+
+format:
+	$(FORMAT) -i -style=file $(ALL_CXX_FILES)
+
+check-format:
+	$(FORMAT) --dry-run -Werror -style=file $(ALL_CXX_FILES)
+
+# ---- Library
+
+LIB_DIR = lib
+LIB_OUT = $(OUT)/$(LIB_DIR)
+LIB_SOURCES = $(wildcard $(LIB_DIR)/*.cc)
+LIB_OBJECTS = $(addprefix $(OUT)/,$(LIB_SOURCES:.cc=.o))
+LIB_ARCHIVE = $(OUT)/lib$(PROJECT).a
+
+$(LIB_ARCHIVE): $(LIB_OBJECTS)
+	$(AR) $(ARFLAGS) $@ $(LIB_OBJECTS)
+
+$(OUT)/$(LIB_DIR)/%.o: $(LIB_DIR)/%.cc
+	@mkdir -p $(dir $@)
+	$(CXX) -c $(COMMON_CXXFLAGS) $(PKG_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
+
+# ---- Binaries
+
+$(OUT)/$(PROJECT): $(PROJECT).cc $(LIB_ARCHIVE)
+	mkdir -p $(OUT)
+	$(CXX) $(COMMON_CXXFLAGS) -Ilib $(PKG_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) $< $(LIB_ARCHIVE) $(PKG_LDFLAGS) $(LDFLAGS) -o $@
+
+# ---- Utilities
+
+UTILS_DIR = utils
+UTILS_SOURCES = $(wildcard $(UTILS_DIR)/*.cpp)
+UTILS_BINARIES = $(addprefix $(OUT)/,$(UTILS_SOURCES:.cpp=))
+
+$(OUT)/$(UTILS_DIR)/%: $(UTILS_DIR)/%.cpp $(LIB_ARCHIVE)
+	@mkdir -p $(dir $@)
+	$(CXX) $(COMMON_CXXFLAGS) -I. $(PKG_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) $< $(LIB_ARCHIVE) $(PKG_LDFLAGS) $(LDFLAGS) -o $@
+
+utils: $(UTILS_BINARIES)
+
+# ---- Unit Tests
+
+UNIT_TEST = unit_tests
+UNIT_TEST_SOURCES = $(wildcard tests/*.cc)
+UNIT_TEST_OBJECTS = $(addprefix $(OUT)/,$(UNIT_TEST_SOURCES:.cc=.o))
+
+ifeq ($(HAS_GTEST), yes)
+$(OUT)/$(UNIT_TEST): $(UNIT_TEST_OBJECTS) $(LIB_ARCHIVE)
+	$(CXX) $(COMMON_CXXFLAGS) $(PKG_CXXFLAGS) $(UNIT_TEST_PKG_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) $^ $(PKG_LDFLAGS) $(UNIT_TEST_PKG_LDFLAGS) $(LDFLAGS) -o $@
+
+$(OUT)/tests/%.o: tests/%.cc
+	@mkdir -p $(dir $@)
+	$(CXX) -Ilib -c $(COMMON_CXXFLAGS) $(PKG_CXXFLAGS) $(UNIT_TEST_PKG_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
+
+UNIT_TEST_BIN = $(OUT)/$(UNIT_TEST)
+else
+UNIT_TEST_BIN =
+endif
+
+# ---- Standard targets
+
+check: $(OUT)/$(PROJECT) $(UNIT_TEST_BIN) tests/data/big.zip tests/data/collisions.zip tests/data/deep.zip tests/data/many_nodes.zip
+	$(if $(UNIT_TEST_BIN),$(UNIT_TEST_BIN))
+	python3 tests/test.py
+
+check-fast: $(OUT)/$(PROJECT) $(UNIT_TEST_BIN)
+	$(if $(UNIT_TEST_BIN),$(UNIT_TEST_BIN))
+	python3 tests/test.py --fast
+
+valgrind: $(OUT)/$(PROJECT) $(UNIT_TEST_BIN)
+	$(if $(UNIT_TEST_BIN),valgrind -q --leak-check=full --track-origins=yes --error-exitcode=33 $(UNIT_TEST_BIN))
+	MOUNT_WRAPPER="valgrind -q --leak-check=full --track-origins=yes --error-exitcode=33" python3 tests/test.py --fast
+
+test: check
+
+unit_tests: $(UNIT_TEST_BIN)
+	$(if $(UNIT_TEST_BIN),$(UNIT_TEST_BIN),@echo "Google Test not found; cannot run unit tests.")
+
+clean:
+	rm -rf $(OUT)
+
+clean-data:
+	rm -f tests/data/big.zip tests/data/collisions.zip tests/data/deep.zip tests/data/many_nodes.zip
 
 doc: $(MAN)
 	@if [ -z "$(QUIET)" ]; then man -l $(MAN); fi
 
 release:
 	python3 release.py $(VERSION)
-
-$(DEST): $(OBJECTS) $(LIB)
-	$(CXX) $(LDFLAGS) $(OBJECTS) $(PROJECT_LDFLAGS) -o $@
-
-$(OUT)/%.o: %.cc
-	@mkdir -p $(dir $@)
-	$(CXX) -Ilib -c $(CPPFLAGS) $(PROJECT_CXXFLAGS) $(CXXFLAGS) $< -o $@ -MMD -MP -MF $(@:.o=.d)
-
-ifneq ($(filter clean,$(MAKECMDGOALS)),)
-else
--include $(OBJECTS:.o=.d)
-endif
-
-$(LIB):
-	$(MAKE) -C lib OUT=$(ABS_OUT) ASAN=$(ASAN) UBSAN=$(UBSAN) DEBUG=$(DEBUG)
-
-clean:
-	rm -rf $(OUT)
-	$(MAKE) -C tests clean OUT=$(ABS_OUT)
-	$(MAKE) -C lib clean OUT=$(ABS_OUT)
 
 $(MAN): README.md
 	pandoc $< -s -t man | \
@@ -101,28 +174,33 @@ $(MAN): README.md
 	    -e 's/^\.PP/.PD\n.PP/g' \
 	    -e 's/^\.TP/.PD\n.TP/g' > $@
 
-install: $(DEST)
-	$(INSTALL) -D "$(DEST)" "$(DESTDIR)$(BINDIR)/mount-zip"
+ifneq ($(filter clean%,$(MAKECMDGOALS)),)
+else
+-include $(LIB_OBJECTS:.o=.d)
+-include $(UNIT_TEST_OBJECTS:.o=.d)
+endif
+
+install: $(OUT)/$(PROJECT)
+	$(INSTALL) -D "$(OUT)/$(PROJECT)" "$(DESTDIR)$(BINDIR)/$(PROJECT)"
 	$(INSTALL) -D -m 644 $(MAN) "$(DESTDIR)$(MANDIR)/$(MAN)"
 
-install-strip: $(DEST)
-	$(INSTALL) -D -s "$(DEST)" "$(DESTDIR)$(BINDIR)/mount-zip"
+install-strip: $(OUT)/$(PROJECT)
+	$(INSTALL) -D -s "$(OUT)/$(PROJECT)" "$(DESTDIR)$(BINDIR)/$(PROJECT)"
 	$(INSTALL) -D -m 644 $(MAN) "$(DESTDIR)$(MANDIR)/$(MAN)"
 
 uninstall:
-	rm -f "$(DESTDIR)$(BINDIR)/mount-zip" "$(DESTDIR)$(MANDIR)/$(MAN)"
+	rm -f "$(DESTDIR)$(BINDIR)/$(PROJECT)" "$(DESTDIR)$(MANDIR)/$(MAN)"
 
-debug:
-	$(MAKE) DEBUG=1 all
+tests/data/big.zip: tests/make_big_zip.py
+	python3 tests/make_big_zip.py
 
-check: $(DEST)
-	$(MAKE) -C tests check OUT=$(ABS_OUT) ASAN=$(ASAN) UBSAN=$(UBSAN)
+tests/data/collisions.zip: tests/make_collisions.py
+	python3 tests/make_collisions.py
 
-check-fast: $(DEST)
-	$(MAKE) -C tests check-fast OUT=$(ABS_OUT) ASAN=$(ASAN) UBSAN=$(UBSAN)
+tests/data/deep.zip: tests/make_deep.py
+	python3 tests/make_deep.py
 
-valgrind: $(DEST)
-	$(MAKE) -C tests valgrind OUT=$(ABS_OUT)
+tests/data/many_nodes.zip: tests/make_many_nodes.py
+	python3 tests/make_many_nodes.py
 
-.PHONY: all doc debug clean check-fast install install-strip release test uninstall check valgrind $(LIB)
-
+.PHONY: all check check-fast check-format clean clean-data doc format install install-strip release test uninstall unit_tests utils valgrind

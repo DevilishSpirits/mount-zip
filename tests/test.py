@@ -124,7 +124,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 data_dir = os.path.join(script_dir, 'data')
 
 # Path of the FUSE mounter.
-mount_program = os.path.join(script_dir, '..', '..', 'out', 'mount-zip')
+mount_program = os.path.join(script_dir, '..', 'out', 'mount-zip')
 
 
 # Mounts the given ZIP archives, walks the mounted ZIP(s) and unmounts.
