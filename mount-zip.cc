@@ -490,20 +490,28 @@ static int ProcessArg(void* data,
         outargs->argv[0] = empty;
         fuse_main(outargs->argc, outargs->argv, &operations, nullptr);
         outargs->argv[0] = argv0;
+        std::exit(EXIT_SUCCESS);
 #else
+        dup2(STDOUT_FILENO, STDERR_FILENO);
         fuse_opt_add_arg(outargs, "-ho");  // I think ho means "help output".
         fuse_main(outargs->argc, outargs->argv, &operations, nullptr);
+        _exit(EXIT_SUCCESS);
 #endif
       }
-      std::exit(EXIT_SUCCESS);
 
     case KEY_VERSION:
       std::cout << PROGRAM_NAME " version: " PROGRAM_VERSION "\n"
                 << "libzip version: " LIBZIP_VERSION "\n"
                 << std::flush;
       fuse_opt_add_arg(outargs, "--version");
+#if FUSE_USE_VERSION >= 30
       fuse_main(outargs->argc, outargs->argv, &operations, nullptr);
       std::exit(EXIT_SUCCESS);
+#else
+      dup2(STDOUT_FILENO, STDERR_FILENO);
+      fuse_main(outargs->argc, outargs->argv, &operations, nullptr);
+      _exit(EXIT_SUCCESS);
+#endif
 
     case FUSE_OPT_KEY_NONOPT:
       if (param.paths.emplace_back(arg).empty()) {

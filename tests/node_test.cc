@@ -13,11 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include "node.h"
+
 #include <gtest/gtest.h>
 #include <sys/stat.h>
 #include <iostream>
 #include <sstream>
-#include "node.h"
 
 namespace {
 
@@ -93,11 +94,11 @@ TEST(NodeTest, GetUniqueChildDirectory) {
       root.children.push_front(file);
 
       EXPECT_EQ(root.GetUniqueChildDirectory(), nullptr);
-      root.children.pop_front(); // remove file
+      root.children.pop_front();  // remove file
     }
 
     EXPECT_EQ(root.GetUniqueChildDirectory(), &child);
-    root.children.pop_front(); // remove child
+    root.children.pop_front();  // remove child
   }
 
   EXPECT_EQ(root.GetUniqueChildDirectory(), nullptr);
@@ -122,4 +123,4 @@ TEST(NodeTest, GetStat) {
   EXPECT_EQ(st.st_mode, static_cast<mode_t>(S_IFREG | 0755));
 }
 
-} // namespace
+}  // namespace
