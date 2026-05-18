@@ -129,32 +129,34 @@ timespec ntfs2timespec(i64 const t) {
 
 }  // namespace
 
-bool ExtraFields::Parse(FieldId const id, Bytes b, mode_t mode) try {
+bool Parse(FieldId const id, Bytes b, Node* const node) try {
+  assert(node);
+
   switch (id) {
     case FieldId::UNIX_TIMESTAMP: {
       const u8 flags = Read<u8>(b);
 
       if (flags & 1) {
-        mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+        node->mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
         if (b.empty()) {
           return true;
         }
       }
 
       if (flags & 2) {
-        atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+        node->atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
       }
 
       if (flags & 4) {
-        ctime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+        node->ctime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
       }
 
       return true;
     }
 
     case FieldId::INFOZIP_UNIX_1:
-      atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
-      mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+      node->atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+      node->mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
       [[fallthrough]];
 
     case FieldId::INFOZIP_UNIX_2:
@@ -162,8 +164,8 @@ bool ExtraFields::Parse(FieldId const id, Bytes b, mode_t mode) try {
         return true;
       }
 
-      uid = Read<u16>(b);
-      gid = Read<u16>(b);
+      node->uid = Read<u16>(b);
+      node->gid = Read<u16>(b);
       return true;
 
     case FieldId::INFOZIP_UNIX_3:
@@ -172,24 +174,23 @@ bool ExtraFields::Parse(FieldId const id, Bytes b, mode_t mode) try {
         return false;
       }
 
-      uid = ReadVariableLength<uid_t>(b);
-      gid = ReadVariableLength<gid_t>(b);
+      node->uid = ReadVariableLength<uid_t>(b);
+      node->gid = ReadVariableLength<gid_t>(b);
       return true;
 
     case FieldId::PKWARE_UNIX:
-      atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
-      mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
-      uid = Read<u16>(b);
-      gid = Read<u16>(b);
+      node->atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+      node->mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+      node->uid = Read<u16>(b);
+      node->gid = Read<u16>(b);
 
       // variable data field
-      if (S_ISBLK(mode) || S_ISCHR(mode)) {
+      if (S_ISBLK(node->mode) || S_ISCHR(node->mode)) {
         unsigned int const maj = Read<u32>(b);
         unsigned int const min = Read<u32>(b);
-        dev = makedev(maj, min);
+        node->dev = makedev(maj, min);
       } else {
-        link_target =
-            std::string_view(reinterpret_cast<const char*>(b.data()), b.size());
+        node->target.assign(reinterpret_cast<const char*>(b.data()), b.size());
       }
 
       return true;
@@ -207,9 +208,9 @@ bool ExtraFields::Parse(FieldId const id, Bytes b, mode_t mode) try {
 
         if (tag == 0x0001) {
           Bytes p = b.first(size);
-          mtime = ntfs2timespec(Read<u64>(p));
-          atime = ntfs2timespec(Read<u64>(p));
-          ctime = ntfs2timespec(Read<u64>(p));
+          node->mtime = ntfs2timespec(Read<u64>(p));
+          node->atime = ntfs2timespec(Read<u64>(p));
+          node->ctime = ntfs2timespec(Read<u64>(p));
           has_times = true;
         }
 

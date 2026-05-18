@@ -99,56 +99,27 @@ void Node::Init() {
        {PKWARE_UNIX, INFOZIP_UNIX_1, INFOZIP_UNIX_2, INFOZIP_UNIX_3,
         UNIX_TIMESTAMP, NTFS_TIMESTAMP}) {
     zip_flags_t const flags = ZIP_FL_CENTRAL | ZIP_FL_LOCAL;
-    zip_uint16_t const n = zip_file_extra_fields_count_by_id(
-        zip, id, static_cast<zip_uint16_t>(field_id), flags);
-    for (zip_uint16_t i = 0; i < n; ++i) {
-      zip_uint16_t field_size;
-      const auto* field_data = zip_file_extra_field_get_by_id(
-          zip, id, static_cast<zip_uint16_t>(field_id), i, &field_size, flags);
+    using u16 = zip_uint16_t;
+    u16 const n =
+        zip_file_extra_fields_count_by_id(zip, id, u16(field_id), flags);
 
-      ExtraFields f;
-      if (!field_data || field_size == 0 ||
-          !f.Parse(field_id, Bytes(field_data, field_size), mode)) {
-        continue;
-      }
+    for (u16 i = 0; i < n; ++i) {
+      u16 field_size;
+      const auto* const field_data = zip_file_extra_field_get_by_id(
+          zip, id, u16(field_id), i, &field_size, flags);
 
-      if (f.mtime.tv_sec != -1) {
-        mtime = f.mtime;
-      }
-
-      if (f.atime.tv_sec != -1) {
-        atime = f.atime;
-      }
-
-      if (f.ctime.tv_sec != -1) {
-        ctime = f.ctime;
-      }
-
-      if (f.uid != -1) {
-        uid = f.uid;
-      }
-
-      if (f.gid != -1) {
-        gid = f.gid;
-      }
-
-      if (f.dev != -1) {
-        dev = f.dev;
-      }
-
-      // Use PKWARE link target only if link target in Info-ZIP format is not
-      // specified (empty file content).
-      if (!f.link_target.empty()) {
-        target = std::string(f.link_target);
-        if (S_ISLNK(mode) && size == 0) {
-          size = f.link_target.size();
-        }
-      }
-
-      if (field_id == PKWARE_UNIX) {
+      if (field_data && field_size > 0 &&
+          Parse(field_id, Bytes(field_data, field_size), this) &&
+          field_id == PKWARE_UNIX) {
         has_pkware_field = true;
       }
     }
+  }
+
+  // Use PKWARE link target only if link target in Info-ZIP format is not
+  // specified (empty file content).
+  if (S_ISLNK(mode) && size == 0) {
+    size = target.size();
   }
 
   // InfoZIP may produce FIFO-marked node with content, PkZip - can't.

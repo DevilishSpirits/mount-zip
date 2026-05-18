@@ -75,8 +75,8 @@ TEST(ExtraFieldTest, UnixPkwareRegular) {
       0x04, 0x03               // GID
   };
 
-  ExtraFields f;
-  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data, S_IFREG | 0666));
+  ExtraFields f(S_IFREG | 0666);
+  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data));
   EXPECT_EQ(f.atime.tv_sec, 0x51CE6FD4);
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.mtime.tv_sec, 0x52C7E372);
@@ -86,7 +86,7 @@ TEST(ExtraFieldTest, UnixPkwareRegular) {
   EXPECT_EQ(f.uid, 0x0102);
   EXPECT_EQ(f.gid, 0x0304);
   EXPECT_EQ(f.dev, -1);
-  EXPECT_TRUE(f.link_target.empty());
+  EXPECT_TRUE(f.target.empty());
 }
 
 // Parse PKWARE Unix Extra Field - block device
@@ -100,8 +100,8 @@ TEST(ExtraFieldTest, UnixPkwareDevice) {
       0x01, 0x00, 0x00, 0x00   // minor
   };
 
-  ExtraFields f;
-  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data, S_IFBLK | 0666));
+  ExtraFields f(S_IFBLK | 0666);
+  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data));
   EXPECT_EQ(f.atime.tv_sec, 0x5D4576C8);
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.mtime.tv_sec, 0x5D4576C8);
@@ -111,7 +111,7 @@ TEST(ExtraFieldTest, UnixPkwareDevice) {
   EXPECT_EQ(f.uid, 0x0000);
   EXPECT_EQ(f.gid, 0x0006);
   EXPECT_EQ(f.dev, makedev(8, 1));
-  EXPECT_TRUE(f.link_target.empty());
+  EXPECT_TRUE(f.target.empty());
 }
 
 // Parse PKWARE Unix Extra Field - symlink
@@ -124,8 +124,8 @@ TEST(ExtraFieldTest, UnixPkwareLink) {
       0x72, 0x65, 0x67, 0x75, 0x6C, 0x61, 0x72  // link target
   };
 
-  ExtraFields f;
-  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data, S_IFLNK | 0777));
+  ExtraFields f(S_IFLNK | 0777);
+  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data));
   EXPECT_EQ(f.atime.tv_sec, 0x5D4973F3);
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.mtime.tv_sec, 0x5D457BA9);
@@ -135,7 +135,7 @@ TEST(ExtraFieldTest, UnixPkwareLink) {
   EXPECT_EQ(f.uid, 1000);
   EXPECT_EQ(f.gid, 1000);
   EXPECT_EQ(f.dev, -1);
-  EXPECT_EQ(f.link_target, "regular");
+  EXPECT_EQ(f.target, "regular");
 }
 
 // Parse Info-ZIP Unix Extra Field (type1)

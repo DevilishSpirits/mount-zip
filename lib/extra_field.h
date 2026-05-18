@@ -18,6 +18,8 @@
 #ifndef EXTRA_FIELD_H
 #define EXTRA_FIELD_H
 
+#include "node.h"
+
 #include <ctime>
 #include <span>
 #include <string_view>
@@ -49,17 +51,23 @@ struct Bytes : std::span<const std::byte> {
   void remove_prefix(size_t n) { *this = subspan(n); }
 };
 
-// UNIX extra fields.
-struct ExtraFields {
-  timespec mtime = {.tv_sec = -1};
-  timespec atime = {.tv_sec = -1};
-  timespec ctime = {.tv_sec = -1};
-  uid_t uid = -1;
-  gid_t gid = -1;
-  dev_t dev = -1;
-  std::string_view link_target;
+bool Parse(FieldId id, Bytes b, Node* node);
 
-  bool Parse(FieldId id, Bytes b, mode_t mode = 0);
+// UNIX extra fields.
+struct ExtraFields : Node {
+  ExtraFields(mode_t const mode = 0)
+      : Node{
+            .mtime = {.tv_sec = -1},
+            .atime = {.tv_sec = -1},
+            .ctime = {.tv_sec = -1},
+            .ino = 0,
+            .dev = dev_t(-1),
+            .uid = uid_t(-1),
+            .gid = gid_t(-1),
+            .mode = mode,
+        } {}
+
+  bool Parse(FieldId id, Bytes b) { return ::Parse(id, b, this); }
 };
 
 #endif

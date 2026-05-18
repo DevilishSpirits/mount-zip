@@ -73,8 +73,8 @@ void PrintExtraFields(FieldId id, bool local, Bytes b, mode_t mode) {
   }
   std::println();
 
-  ExtraFields f;
-  if (!f.Parse(id, b, mode)) {
+  ExtraFields f(mode);
+  if (!f.Parse(id, b)) {
     std::println("      Cannot parse");
     return;
   }
@@ -90,8 +90,8 @@ void PrintExtraFields(FieldId id, bool local, Bytes b, mode_t mode) {
   if (f.dev != -1) {
     std::println("      device: {}, {}", major(f.dev), minor(f.dev));
   }
-  if (!f.link_target.empty()) {
-    std::println("      link:   {}", f.link_target);
+  if (!f.target.empty()) {
+    std::println("      link:   {}", f.target);
   }
 }
 
