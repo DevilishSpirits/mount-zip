@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -29,33 +30,17 @@
 
 #include "lib/extra_field.h"
 
-void PrintTime(const char* label, const timespec& time) {
-  if (time.tv_sec == -1) {
-    return;
+void PrintTime(const char* const label, const timespec& ts) {
+  if (ts.tv_sec > 0) {
+    using namespace std::chrono;
+    sys_time<nanoseconds> tp(seconds(ts.tv_sec) + nanoseconds(ts.tv_nsec));
+    zoned_time local_time(current_zone(), tp);
+    std::println("{}{:%F %T %z}", label, local_time);
   }
-  struct tm tmp;
-  if (!localtime_r(&time.tv_sec, &tmp)) {
-    perror("localtime");
-    return;
-  }
-
-  char str1[512];
-  if (strftime(str1, sizeof(str1), "%F %T", &tmp) == 0) {
-    std::println(stderr, "strftime returned 0");
-    return;
-  }
-
-  char str2[16];
-  if (strftime(str2, sizeof(str2), "%z", &tmp) == 0) {
-    std::println(stderr, "strftime returned 0");
-    return;
-  }
-
-  std::println("{}{}.{:09} {}", label, str1, time.tv_nsec, str2);
 }
 
-void PrintTime(const char* label, time_t time) {
-  PrintTime(label, timespec{.tv_sec = time, .tv_nsec = 0});
+void PrintTime(const char* const label, time_t const t) {
+  PrintTime(label, timespec{.tv_sec = t, .tv_nsec = 0});
 }
 
 void PrintExtraFields(FieldId id, bool local, Bytes b, mode_t mode) {
