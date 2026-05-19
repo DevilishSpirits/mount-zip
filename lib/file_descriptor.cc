@@ -32,6 +32,7 @@ FileDescriptor::~FileDescriptor() {
   }
 }
 
+#ifdef CHROME_ICU
 // Removes the memory mapping.
 FileMapping::~FileMapping() {
   if (munmap(data_, size_) < 0) {
@@ -69,3 +70,4 @@ FileMapping::FileMapping(const char* const path) {
     ThrowSystemError("Cannot mmap file ", Path(path));
   }
 }
+#endif

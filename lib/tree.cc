@@ -265,6 +265,7 @@ bool Tree::ReadPasswordFromStdIn() {
 
 namespace {
 
+#ifdef CHROME_ICU
 // Initializes and cleans up the ICU library.
 class IcuGuard {
  public:
@@ -292,6 +293,7 @@ class IcuGuard {
   // Memory-mapped ICU data file.
   const FileMapping mapped_file_;
 };
+#endif
 
 struct Closer {
   void operator()(UConverter* const conv) const { ucnv_close(conv); }
@@ -467,6 +469,11 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
 
   LOG(DEBUG) << "Total uncompressed size = " << total_uncompressed_size
              << " bytes";
+
+#ifdef CHROME_ICU
+  // Initialize ICU library and ensure it will be cleaned up.
+  const IcuGuard guard("/opt/google/chrome/icudtl.dat");
+#endif
 
   // Detect filename encoding.
   std::string encoding;

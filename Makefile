@@ -27,11 +27,21 @@ DEPS = fuse
 FUSE_CXXFLAGS = -DFUSE_USE_VERSION=26
 endif
 
-DEPS += libzip icu-uc icu-i18n
+DEPS += libzip
+
+ifeq ($(CHROME_ICU), 1)
+PKG_CXXFLAGS += -DCHROME_ICU
+PKG_CXXFLAGS += -I"$(SYSROOT)/usr/include/icu-chrome/common"
+PKG_CXXFLAGS += -I"$(SYSROOT)/usr/include/icu-chrome/i18n"
+PKG_LDFLAGS += -licui18n-chrome -licuuc-chrome
+else
+DEPS += icu-uc icu-i18n
+endif
+
 UNIT_TEST_DEPS = gtest gtest_main
 
-PKG_CXXFLAGS := $(shell $(PKG_CONFIG) --cflags $(DEPS) 2>/dev/null)
-PKG_LDFLAGS := $(shell $(PKG_CONFIG) --libs $(DEPS) 2>/dev/null)
+PKG_CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(DEPS) 2>/dev/null)
+PKG_LDFLAGS += $(shell $(PKG_CONFIG) --libs $(DEPS) 2>/dev/null)
 
 HAS_GTEST := $(shell $(PKG_CONFIG) --exists $(UNIT_TEST_DEPS) 2>/dev/null && echo yes || echo no)
 

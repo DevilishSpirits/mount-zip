@@ -43,6 +43,7 @@ class FileDescriptor {
   int fd_;
 };
 
+#ifdef CHROME_ICU
 // A file mapping to memory.
 class FileMapping {
  public:
@@ -64,5 +65,6 @@ class FileMapping {
   void* data_;
   size_t size_;
 };
+#endif
 
-#endif  // SCOPED_FILE_H
+#endif  // FILE_DESCRIPTOR_H
