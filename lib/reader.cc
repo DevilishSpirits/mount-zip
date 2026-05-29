@@ -217,7 +217,7 @@ class CacheFileReader : public UnbufferedReader {
   // Throws std::system_error in case of error.
   static int GetCacheFile() {
     static const FileDescriptor file = CreateCacheFile();
-    return file.GetDescriptor();
+    return file;
   }
 
   // Reserves space in the cache file.

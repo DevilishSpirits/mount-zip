@@ -23,14 +23,7 @@
 #include <unistd.h>
 
 #include "error.h"
-#include "log.h"
 #include "path.h"
-
-FileDescriptor::~FileDescriptor() {
-  if (IsValid() && close(fd_) < 0) {
-    PLOG(ERROR) << "Cannot close file";
-  }
-}
 
 #ifdef CHROME_ICU
 // Removes the memory mapping.
@@ -44,12 +37,10 @@ FileMapping::~FileMapping() {
 // Throws a system_error in case of error.
 FileMapping::FileMapping(const char* const path) {
   // Open file in read-only mode.
-  const FileDescriptor file(open(path, O_RDONLY));
-  if (!file.IsValid()) {
+  const FileDescriptor fd(open(path, O_RDONLY));
+  if (!fd.IsValid()) {
     ThrowSystemError("Cannot open file ", Path(path));
   }
-
-  const int fd = file.GetDescriptor();
 
   // Get file size.
   struct stat st;

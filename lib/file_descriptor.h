@@ -19,27 +19,56 @@
 #include <utility>
 
 #include <sys/types.h>
+#include <unistd.h>
+
+#include "log.h"
 
 // A scoped file descriptor.
 class FileDescriptor {
  public:
-  // Closes the file descriptor if it is valid.
-  ~FileDescriptor();
+  // Closes the underlying file descriptor if it is currently valid.
+  ~FileDescriptor() {
+    if (IsValid() && close(fd_) < 0) {
+      PLOG(ERROR) << "Cannot close file";
+    }
+  }
 
+  // Initializes an empty (invalid) FileDescriptor.
+  FileDescriptor() noexcept : fd_(-1) {}
+
+  // Takes ownership of the provided raw file descriptor.
   explicit FileDescriptor(int fd) noexcept : fd_(fd) {}
+
+  // Move-constructs a FileDescriptor, taking ownership from the other instance.
   FileDescriptor(FileDescriptor&& other) noexcept
       : fd_(std::exchange(other.fd_, -1)) {}
 
+  // Atomically swaps the underlying file descriptors between two instances.
+  void SwapWith(FileDescriptor& other) noexcept { std::swap(fd_, other.fd_); }
+
+  // Explicitly closes the underlying file descriptor and marks this instance as
+  // invalid.
+  void Close() noexcept {
+    FileDescriptor other;
+    SwapWith(other);
+  }
+
+  // Assigns ownership from another instance.
   FileDescriptor& operator=(FileDescriptor other) noexcept {
-    std::swap(fd_, other.fd_);
+    SwapWith(other);
     return *this;
   }
 
-  bool IsValid() const { return fd_ >= 0; }
-  int GetDescriptor() const { return fd_; }
+  // Returns true if the instance holds a valid, non-negative file descriptor.
+  bool IsValid() const noexcept { return fd_ >= 0; }
+
+  // Gets the underlying raw file descriptor.
+  operator int() const noexcept { return fd_; }
 
  private:
-  // File descriptor.
+  friend class FileDescriptorTest;
+
+  // Raw file descriptor.
   int fd_;
 };
 
