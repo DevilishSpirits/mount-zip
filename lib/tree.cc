@@ -406,16 +406,6 @@ Tree::NodesByPath::~NodesByPath() {
   clear_and_dispose(std::default_delete<Node>());
 }
 
-size_t Tree::GetBucketCount(const Zips& zips) {
-  i64 n = 0;
-  for (const auto& [z, _] : zips) {
-    n += zip_get_num_entries(z.get(), 0);
-  }
-  // Floor the number of elements to a power of 2 with a minimum of 16.
-  return std::bit_floor(static_cast<size_t>(
-      std::clamp<i64>(n, 16, std::numeric_limits<ssize_t>::max())));
-}
-
 void Tree::RehashIfNecessary() {
   if (nodes_by_path_.size() > nodes_by_path_.bucket_count()) {
     const size_t n = nodes_by_path_.bucket_count() * 2;
@@ -548,10 +538,11 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
 
     size_t const initial_path_length = path.size();
 
-    assert(hard_links.empty());
-    assert(files_by_original_path_.empty());
-
     zip_t* const z = zip.get();
+    current_archive = z;
+    hard_links.clear();
+    nodes_by_original_path_.clear();
+
     const i64 n = zip_get_num_entries(z, 0);
     for (i64 id = 0; id < n; ++id) {
       if (zip_stat_index(z, id, zipFlags, &sb) < 0) {
@@ -614,7 +605,6 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
       assert(!node->IsDir());
       parent->AddChild(node);
       total_block_count_++;
-      files_by_original_path_[original_path.WithoutTrailingSeparator()] = node;
 
       if (is_hard_link) {
         hard_links.push_back(node);
@@ -669,12 +659,21 @@ Tree::Tree(std::span<const std::string> paths, Options opts)
 
     // Add hard links
     for (Node* const node : hard_links) {
-      CreateHardLink(node);
-    }
+      path.resize(initial_path_length);
+      Path(toUtf8(node->target)).NormalizeAppend(&path);
+      Node* const target = FindNodeByOriginalPath(path);
+      if (!target) {
+        LOG(ERROR) << "Cannot find target for hard link " << *node << " -> "
+                   << path;
+        continue;
+      }
 
-    files_by_original_path_.clear();
-    hard_links.clear();
+      CreateHardLink(node, target);
+    }
   }
+
+  current_archive = nullptr;
+  NodesByOriginalPath().swap(nodes_by_original_path_);
 
   if (should_display_progress.Count()) {
     LOG(INFO) << "Loading... " << ProgressMessage(100);
@@ -815,6 +814,17 @@ Node* Tree::RenameIfCollision(Node::Ptr node) {
     return node.release();  // Now owned by |nodes_by_path_|.
   }
 
+  if (!node->renamed) {
+    node->renamed = true;
+    assert(!node->IsRoot());
+    if (!node->IsDir() && node->zip == current_archive) {
+      nodes_by_original_path_.insert({.renamed_node = node.get(),
+                                      .original_name = node->name,
+                                      .path_length = node->path_length,
+                                      .path_hash = node->path_hash});
+    }
+  }
+
   // There is a name collision
   LOG(DEBUG) << *node << " conflicts with " << *pos;
 
@@ -864,24 +874,8 @@ Node* Tree::CreateFile(zip_t* const z,
   return RenameIfCollision(std::move(node));
 }
 
-void Tree::CreateHardLink(Node* const node) {
+void Tree::CreateHardLink(Node* const node, Node* const target) {
   assert(node);
-
-  const Path target_path = Path(node->target);
-  if (target_path.empty()) {
-    LOG(ERROR) << "Cannot get target for hard link " << *node;
-    return;
-  }
-
-  const auto it =
-      files_by_original_path_.find(target_path.WithoutTrailingSeparator());
-  if (it == files_by_original_path_.end()) {
-    LOG(ERROR) << "Cannot find target for hard link " << *node << " -> "
-               << target_path;
-    return;
-  }
-
-  Node* const target = it->second;
   assert(target);
 
   if (node->GetTarget() == target->GetTarget()) {
@@ -916,10 +910,49 @@ void Tree::CreateHardLink(Node* const node) {
   LOG(DEBUG) << "Created hard link " << *node << " -> " << *target;
 }
 
+bool Tree::OriginalName::HasPath(std::string_view path) const {
+  if (!path.ends_with(original_name)) {
+    return false;
+  }
+
+  path.remove_suffix(original_name.size());
+
+  assert(renamed_node);
+  assert(renamed_node->renamed);
+  const Node* const parent = renamed_node->parent;
+  assert(parent);
+
+  if (parent->IsRoot()) {
+    return parent->HasPath(path);
+  }
+
+  if (!path.ends_with('/')) {
+    return false;
+  }
+
+  path.remove_suffix(1);
+  return parent->HasPath(path);
+}
+
 Node* Tree::FindNode(const HashedStringView& path) {
   auto const it = nodes_by_path_.find(path, nodes_by_path_.hash_function(),
                                       nodes_by_path_.key_eq());
   return it == nodes_by_path_.end() ? nullptr : &*it;
+}
+
+Node* Tree::FindNodeByOriginalPath(const HashedStringView& path) {
+  auto const it = nodes_by_original_path_.find(path);
+  if (it != nodes_by_original_path_.end()) {
+    Node* const node = it->renamed_node;
+    assert(node);
+    assert(node->renamed);
+    assert(node->zip == current_archive);
+    return node;
+  }
+
+  Node* const node = FindNode(path);
+  return node && !node->renamed && node->zip == current_archive ? node
+                                                                : nullptr;
 }
 
 Node* Tree::GetOrCreateDirNode(std::string_view path) {

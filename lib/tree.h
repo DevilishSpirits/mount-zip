@@ -20,7 +20,7 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "node.h"
@@ -79,6 +79,15 @@ class Tree {
     return FindNode(HashedStringView(Path(path).WithoutTrailingSeparator()));
   }
 
+  // Finds a node in the tree using a pre-computed original path hash.
+  Node* FindNodeByOriginalPath(const HashedStringView& path);
+
+  // Finds a node in the tree by its full absolute original path.
+  Node* FindNodeByOriginalPath(std::string_view path) {
+    return FindNodeByOriginalPath(
+        HashedStringView(Path(path).WithoutTrailingSeparator()));
+  }
+
   blkcnt_t GetBlockCount() const { return total_block_count_; }
   fsfilcnt_t GetNodeCount() const { return nodes_by_path_.size(); }
 
@@ -124,7 +133,7 @@ class Tree {
                    mode_t mode);
 
   // Creates and attaches a hard link node.
-  void CreateHardLink(Node* node);
+  void CreateHardLink(Node* node, Node* target);
 
   // Attaches the given |node|, renaming it if necessary to prevent name
   // collisions.
@@ -144,23 +153,32 @@ class Tree {
 
   void RehashIfNecessary();
 
-  // Computes the optimal number of buckets for the hash tables indexing the
-  // given ZIP archives.
-  static size_t GetBucketCount(const Zips& zips);
-
   // ZIP archives.
   const Zips zips_;
 
   // Extraction options.
   const Options opts_;
 
+  struct OriginalName {
+    Node* renamed_node;
+    std::string original_name;
+    size_t path_length;
+    size_t path_hash;
+
+    bool HasPath(std::string_view path) const;
+  };
+
   // Hash extractor for Node.
   struct GetHash {
+    using is_transparent = void;
     size_t operator()(const HashedStringView& hsv) const { return hsv.hash; }
-    size_t operator()(const Node& node) const { return node.path_hash; }
+    size_t operator()(const Node& n) const { return n.path_hash; }
+    size_t operator()(const OriginalName& n) const { return n.path_hash; }
   };
 
   struct HasSamePath {
+    using is_transparent = void;
+
     bool operator()(const Node& a, const Node& b) const {
       return a.path_hash == b.path_hash && a.parent == b.parent &&
              a.name == b.name;
@@ -168,6 +186,17 @@ class Tree {
 
     bool operator()(const HashedStringView& hsv, const Node& n) const {
       return hsv.hash == n.path_hash && n.HasPath(hsv.string);
+    }
+
+    bool operator()(const OriginalName& a, const OriginalName& b) const {
+      return a.path_hash == b.path_hash &&
+             a.renamed_node->parent == b.renamed_node->parent &&
+             a.original_name == b.original_name;
+    }
+
+    bool operator()(const HashedStringView& hsv, const OriginalName& n) const {
+      return hsv.hash == n.path_hash && hsv.string.size() == n.path_length &&
+             n.HasPath(hsv.string);
     }
   };
 
@@ -193,7 +222,13 @@ class Tree {
   NodesByPath nodes_by_path_{
       {buckets_by_path_.data(), buckets_by_path_.size()}};
 
-  std::unordered_map<std::string_view, Node*> files_by_original_path_;
+  // Renamed nodes indexed by original path.
+  using NodesByOriginalPath =
+      std::unordered_set<OriginalName, GetHash, HasSamePath>;
+  NodesByOriginalPath nodes_by_original_path_;
+
+  // Descriptor of the archive being currently parsed.
+  zip_t* current_archive = nullptr;
 
   // Root node.
   Node* const root_ = RenameIfCollision(Node::Ptr(

@@ -173,6 +173,9 @@ struct Node {
   // Number of entries whose name have initially collided with this node.
   int collision_count = 0;
 
+  // Has this node been renamed?
+  bool renamed = false;
+
   // Returns true if this node is the root directory of the virtual file system.
   bool IsRoot() const { return !parent; }
 
