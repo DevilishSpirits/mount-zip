@@ -40,6 +40,24 @@ endif
 
 UNIT_TEST_DEPS = gtest gtest_main
 
+# On macOS, icu4c is keg-only (not symlinked into the default search
+# path). Wire the Homebrew path into PKG_CONFIG_PATH so every pkg-config call
+# in this Makefile resolves the correct version regardless of shell environment.
+ifeq ($(shell uname -s),Darwin)
+  COMMON_CXXFLAGS += -std=gnu++23
+  BREW_PREFIX := $(shell brew --prefix 2>/dev/null)
+  ifneq ($(BREW_PREFIX),)
+    PKG_CONFIG = env PKG_CONFIG_PATH="$(BREW_PREFIX)/opt/icu4c/lib/pkgconfig" pkg-config
+    COMMON_CXXFLAGS += -I$(BREW_PREFIX)/opt/boost/include
+    # macFUSE enables Darwin-extended operation signatures by default
+    # (fuse_darwin_attr*, struct statfs*, 5-arg getxattr, fuse_darwin_fill_dir_t).
+    # mount-zip uses standard POSIX signatures, so opt out of the extensions.
+    FUSE_CXXFLAGS += -DFUSE_DARWIN_ENABLE_EXTENSIONS=0
+  endif
+else
+  COMMON_CXXFLAGS += -std=c++23
+endif
+
 PKG_CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(DEPS) 2>/dev/null)
 PKG_LDFLAGS += $(shell $(PKG_CONFIG) --libs $(DEPS) 2>/dev/null)
 
@@ -50,8 +68,7 @@ UNIT_TEST_PKG_CXXFLAGS := $(shell $(PKG_CONFIG) --cflags $(UNIT_TEST_DEPS) 2>/de
 UNIT_TEST_PKG_LDFLAGS := $(shell $(PKG_CONFIG) --libs $(UNIT_TEST_DEPS) 2>/dev/null)
 endif
 
-STD_CXXFLAGS = -std=c++23
-COMMON_CXXFLAGS = $(STD_CXXFLAGS) -Wall -Wextra -Wno-nullability-extension \
+COMMON_CXXFLAGS += -Wall -Wextra -Wno-nullability-extension \
                    -Wno-sign-compare -Wno-missing-field-initializers \
                    -I. -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64 $(FUSE_CXXFLAGS)
 
@@ -207,12 +224,14 @@ else
 endif
 
 install: $(OUT)/$(PROJECT)
-	$(INSTALL) -D "$(OUT)/$(PROJECT)" "$(DESTDIR)$(BINDIR)/$(PROJECT)"
-	$(INSTALL) -D -m 644 $(MAN) "$(DESTDIR)$(MANDIR)/$(MAN)"
+	mkdir -p "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(MANDIR)"
+	$(INSTALL) "$(OUT)/$(PROJECT)" "$(DESTDIR)$(BINDIR)/$(PROJECT)"
+	$(INSTALL) -m 644 $(MAN) "$(DESTDIR)$(MANDIR)/$(MAN)"
 
 install-strip: $(OUT)/$(PROJECT)
-	$(INSTALL) -D -s "$(OUT)/$(PROJECT)" "$(DESTDIR)$(BINDIR)/$(PROJECT)"
-	$(INSTALL) -D -m 644 $(MAN) "$(DESTDIR)$(MANDIR)/$(MAN)"
+	mkdir -p "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(MANDIR)"
+	$(INSTALL) -s "$(OUT)/$(PROJECT)" "$(DESTDIR)$(BINDIR)/$(PROJECT)"
+	$(INSTALL) -m 644 $(MAN) "$(DESTDIR)$(MANDIR)/$(MAN)"
 
 uninstall:
 	rm -f "$(DESTDIR)$(BINDIR)/$(PROJECT)" "$(DESTDIR)$(MANDIR)/$(MAN)"
