@@ -1,3 +1,17 @@
+2026-05-31 François Degros <fdegros@chromium.org>
+
+	* Released mount-zip 1.14:
+	- Migrate project to C++23
+	- Consolidate FileNode and DataNode into a single Node class
+	- Implement incremental path hashing for faster tree construction
+	- Improve name collision resolution and hard link tracking
+	- Rename permissions options to `-o enforce_permissions`
+	- Apply fmask and dmask even when default_permissions is used
+	- Support specialized ICU initialization for ChromeOS
+	- Improve macOS compatibility and Homebrew integration in the build system
+	- Modernize the build system and consolidate Makefiles
+	- Rework and enhance the test suite with better code coverage support
+
 2026-02-27 François Degros <fdegros@chromium.org>
 
 	* Released mount-zip 1.12:
